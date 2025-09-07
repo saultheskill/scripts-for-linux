@@ -244,6 +244,9 @@ test_man_integration() {
         source "$TEMPLATES_DIR/11-man-integration.zsh" 2>/dev/null
         [[ -n "$MANPAGER" ]] || exit 1
         declare -f fman >/dev/null 2>&1 || exit 1
+        declare -f batman >/dev/null 2>&1 || exit 1
+        declare -f man-help >/dev/null 2>&1 || exit 1
+        declare -f man-section >/dev/null 2>&1 || exit 1
     )
 }
 

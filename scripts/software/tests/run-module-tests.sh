@@ -337,7 +337,8 @@ run_module_tests() {
     # 模块11: man集成测试
     run_test "模块11-man集成-加载测试" "test_module_loading 11-man-integration.zsh"
     run_test "模块11-man集成-依赖测试" "test_tool_dependencies 11-man-integration.zsh bat fzf"
-    run_test "模块11-man集成-函数测试" "test_functions 11-man-integration.zsh fman batman man-search"
+    run_test "模块11-man集成-函数测试" "test_functions 11-man-integration.zsh fman batman man-search man-help man-section"
+    run_test "模块11-man集成-别名测试" "test_aliases 11-man-integration.zsh manf mans manh"
 
     # 模块12: APT集成测试
     run_test "模块12-APT集成-加载测试" "test_module_loading 12-apt-integration.zsh"
