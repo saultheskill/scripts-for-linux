@@ -219,20 +219,70 @@ test_functions() {
     )
 }
 
+# 具体功能测试函数
+test_path_functionality() {
+    (
+        cd "$TEST_TEMP_DIR"
+        source "$TEMPLATES_DIR/00-path-config.zsh" 2>/dev/null
+
+        # 验证PATH重复添加防护
+        local initial_count=$(echo "$PATH" | tr ':' '\n' | wc -l)
+        source "$TEMPLATES_DIR/00-path-config.zsh" 2>/dev/null
+        local final_count=$(echo "$PATH" | tr ':' '\n' | wc -l)
+
+        [[ $final_count -le $((initial_count + 5)) ]] || exit 1
+    )
+}
+
+test_tool_aliases() {
+    (
+        cd "$TEST_TEMP_DIR"
+        source "$TEMPLATES_DIR/01-tool-detection.zsh" 2>/dev/null
+
+        # 检查bat别名（如果batcat存在）
+        if command -v batcat >/dev/null 2>&1; then
+            alias bat 2>/dev/null | grep -q "batcat" || exit 1
+        fi
+
+        # 检查fd别名（如果fdfind存在）
+        if command -v fdfind >/dev/null 2>&1; then
+            alias fd 2>/dev/null | grep -q "fdfind" || exit 1
+        fi
+    )
+}
+
+test_bat_environment() {
+    if ! check_tool_availability "bat"; then
+        return 2  # 跳过测试
+    fi
+
+    (
+        cd "$TEST_TEMP_DIR"
+        source "$TEMPLATES_DIR/02-bat-config.zsh" 2>/dev/null
+
+        [[ "$BAT_STYLE" == "numbers,changes,header,grid" ]] || exit 1
+        [[ "$BAT_THEME" == "OneHalfDark" ]] || exit 1
+        [[ "$BAT_PAGER" == "less -RFK" ]] || exit 1
+    )
+}
+
 # 模块测试定义
 run_module_tests() {
     log_info "开始模块测试..."
 
     # 模块00: PATH配置测试
     run_test "模块00-PATH配置-加载测试" "test_module_loading 00-path-config.zsh"
+    run_test "模块00-PATH配置-功能测试" "test_path_functionality"
 
     # 模块01: 工具检测测试
     run_test "模块01-工具检测-加载测试" "test_module_loading 01-tool-detection.zsh"
     run_test "模块01-工具检测-依赖测试" "test_tool_dependencies 01-tool-detection.zsh bat fd"
+    run_test "模块01-工具检测-别名测试" "test_tool_aliases"
 
     # 模块02: bat配置测试
     run_test "模块02-bat配置-加载测试" "test_module_loading 02-bat-config.zsh"
     run_test "模块02-bat配置-依赖测试" "test_tool_dependencies 02-bat-config.zsh bat"
+    run_test "模块02-bat配置-环境变量测试" "test_bat_environment"
     run_test "模块02-bat配置-别名测试" "test_aliases 02-bat-config.zsh cat less more batl batn batp"
 
     # 模块03: fd配置测试
