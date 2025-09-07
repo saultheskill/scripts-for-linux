@@ -325,6 +325,12 @@ run_module_tests() {
     run_test "模块09-git集成-函数测试" "test_functions 09-git-integration.zsh gco glog gst gstash gremote gfh gblame gdiff"
     run_test "模块09-git集成-别名测试" "test_aliases 09-git-integration.zsh gbr glg gstat gsh grm gfhist gbl gdf"
 
+    # 模块09-fzf-git-advanced: fzf-git高级集成测试
+    run_test "模块09-fzf-git高级-加载测试" "test_module_loading 09-fzf-git-advanced.zsh"
+    run_test "模块09-fzf-git高级-依赖测试" "test_tool_dependencies 09-fzf-git-advanced.zsh git fzf"
+    run_test "模块09-fzf-git高级-函数测试" "test_functions 09-fzf-git-advanced.zsh _fzf_git_files _fzf_git_branches gco-fzf gswt gshow gstash-apply"
+    run_test "模块09-fzf-git高级-别名测试" "test_aliases 09-fzf-git-advanced.zsh gco-f gsw gsh-f gst-f"
+
     # 模块10: 日志监控测试（占位符）
     run_test "模块10-日志监控-加载测试" "test_module_loading 10-log-monitoring.zsh"
 
