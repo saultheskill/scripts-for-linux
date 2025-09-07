@@ -104,6 +104,12 @@ modules:
     dependencies: ["*"]
     template_file: "99-aliases-summary.zsh"
 
+  - name: "99-debug-tools.zsh"
+    description: "调试和诊断工具（shell-tools-debug等）"
+    required_tools: []
+    dependencies: ["99-aliases-summary"]
+    template_file: "99-debug-tools.zsh"
+
 # 配置信息
 config:
   version: "2.1"

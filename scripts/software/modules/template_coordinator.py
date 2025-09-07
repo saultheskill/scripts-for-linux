@@ -29,22 +29,22 @@ from .file_manager import get_file_manager
 
 class TemplateCoordinator:
     """基于模板的配置生成协调器"""
-    
+
     def __init__(self):
         self.tool_detector = get_tool_detector()
         self.file_manager = get_file_manager()
         self.script_dir = Path(__file__).parent.parent
         self.templates_dir = self.script_dir / "templates"
         self.modules_config = self._load_modules_config()
-    
+
     def _load_modules_config(self) -> Dict:
         """加载模块配置文件"""
         config_file = self.templates_dir / "modules.yaml"
-        
+
         if not config_file.exists():
             log_error(f"模块配置文件不存在: {config_file}")
             return {"modules": [], "config": {}}
-        
+
         try:
             with open(config_file, 'r', encoding='utf-8') as f:
                 config = yaml.safe_load(f)
@@ -53,7 +53,7 @@ class TemplateCoordinator:
         except Exception as e:
             log_error(f"加载模块配置失败: {str(e)}")
             return {"modules": [], "config": {}}
-    
+
     def generate_all_configs(self) -> bool:
         """生成所有配置文件"""
         log_info("开始生成Shell工具模块化配置（基于模板）...")
@@ -81,11 +81,11 @@ class TemplateCoordinator:
             required_tools = module_info.get("required_tools", [])
             dependencies = module_info.get("dependencies", [])
             template_file = module_info.get("template_file", module_name)
-            
+
             # 检查工具可用性
             if self.tool_detector.check_module_dependencies(required_tools):
                 if self._generate_module_from_template(
-                    module_name, description, required_tools, 
+                    module_name, description, required_tools,
                     dependencies, template_file
                 ):
                     success_count += 1
@@ -106,7 +106,7 @@ class TemplateCoordinator:
 
         log_success(f"模块化配置生成完成！成功生成 {success_count}/{total_count} 个模块")
         return success_count > 0
-    
+
     def _generate_main_config(self) -> bool:
         """生成主配置文件"""
         # 使用简化的主配置内容
@@ -124,7 +124,7 @@ declare -A SHELL_TOOLS_MODULES_FAILED
 load_shell_tools_module() {
     local module_name="$1"
     local module_path="$2"
-    
+
     if [[ -f "$module_path" ]]; then
         if source "$module_path" 2>/dev/null; then
             SHELL_TOOLS_MODULES_LOADED["$module_name"]=1
@@ -141,12 +141,12 @@ load_shell_tools_module() {
 # 加载所有模块
 load_all_modules() {
     local modules_dir="$HOME/.oh-my-zsh/custom/modules"
-    
+
     if [[ ! -d "$modules_dir" ]]; then
         echo "警告: 模块目录不存在: $modules_dir"
         return 1
     fi
-    
+
     # 按数字前缀顺序加载模块
     for module_file in "$modules_dir"/*.zsh; do
         if [[ -f "$module_file" ]]; then
@@ -156,29 +156,21 @@ load_all_modules() {
     done
 }
 
-# 加载调试模块
-load_debug_module() {
-    local debug_file="$HOME/.oh-my-zsh/custom/debug/shell-tools-debug.zsh"
-    if [[ -f "$debug_file" ]]; then
-        source "$debug_file"
-    fi
-}
+# 调试模块现在是标准模块系统的一部分（99-debug-tools.zsh）
+# 通过 load_all_modules() 自动加载
 
 # 主加载逻辑
 if [[ -z "$SHELL_TOOLS_MAIN_LOADED" ]]; then
     export SHELL_TOOLS_MAIN_LOADED=1
-    
-    # 加载所有模块
+
+    # 加载所有模块（包括调试模块 99-debug-tools.zsh）
     load_all_modules
-    
-    # 加载调试功能
-    load_debug_module
-    
+
     # 显示加载状态
     if [[ -z "$SHELL_TOOLS_QUIET" ]]; then
         local loaded_count=${#SHELL_TOOLS_MODULES_LOADED[@]}
         local failed_count=${#SHELL_TOOLS_MODULES_FAILED[@]}
-        
+
         echo "🚀 Shell Tools 模块化配置已加载！"
         echo "📦 已加载 $loaded_count 个模块"
         if [[ $failed_count -gt 0 ]]; then
@@ -190,32 +182,32 @@ if [[ -z "$SHELL_TOOLS_MAIN_LOADED" ]]; then
 fi
 '''
         return self.file_manager.write_main_config(content)
-    
+
     def _generate_module_from_template(self, module_name: str, description: str,
                                      required_tools: List[str], dependencies: List[str],
                                      template_file: str) -> bool:
         """从模板文件生成模块"""
         template_path = self.templates_dir / template_file
-        
+
         if not template_path.exists():
             log_error(f"模板文件不存在: {template_path}")
             return False
-        
+
         try:
             # 读取模板内容
             with open(template_path, 'r', encoding='utf-8') as f:
                 template_content = f.read()
-            
+
             # 生成模块文件
             return self.file_manager.write_module_file(
-                module_name, description, required_tools, 
+                module_name, description, required_tools,
                 dependencies, template_content
             )
-            
+
         except Exception as e:
             log_error(f"从模板生成模块 {module_name} 失败: {str(e)}")
             return False
-    
+
     def _generate_debug_module(self) -> bool:
         """生成调试模块"""
         debug_content = '''# =============================================================================
@@ -228,11 +220,11 @@ shell-tools-debug() {
     echo "版本: 2.1 (模块化重构版 - 基于模板)"
     echo "配置目录: $HOME/.oh-my-zsh/custom/"
     echo
-    
+
     echo "PATH配置:"
     echo "  PATH: $PATH"
     echo
-    
+
     echo "工具检测:"
     echo "  bat: $(command -v bat 2>/dev/null || echo 'not found')"
     echo "  batcat: $(command -v batcat 2>/dev/null || echo 'not found')"
@@ -242,11 +234,11 @@ shell-tools-debug() {
     echo "  rg: $(command -v rg 2>/dev/null || echo 'not found')"
     echo "  git: $(command -v git 2>/dev/null || echo 'not found')"
     echo
-    
+
     echo "别名状态:"
     alias | grep -E '^(bat|fd)=' || echo "  无相关别名"
     echo
-    
+
     echo "模块加载状态:"
     if [[ -n "${!SHELL_TOOLS_MODULES_LOADED[@]}" ]]; then
         for module in "${!SHELL_TOOLS_MODULES_LOADED[@]}"; do
@@ -255,7 +247,7 @@ shell-tools-debug() {
     else
         echo "  无已加载模块"
     fi
-    
+
     if [[ -n "${!SHELL_TOOLS_MODULES_FAILED[@]}" ]]; then
         echo
         echo "模块加载失败:"
@@ -263,7 +255,7 @@ shell-tools-debug() {
             echo "  ✗ $module"
         done
     fi
-    
+
     echo
     echo "配置文件状态:"
     local modules_dir="$HOME/.oh-my-zsh/custom/modules"
@@ -274,19 +266,19 @@ shell-tools-debug() {
     else
         echo "  ⚠️  模块目录不存在"
     fi
-    
+
     echo "=========================="
 }
 
 # 模块重新加载函数
 shell-tools-reload() {
     echo "重新加载 Shell Tools 模块..."
-    
+
     # 清除加载状态
     unset SHELL_TOOLS_MODULES_LOADED
     unset SHELL_TOOLS_MODULES_FAILED
     unset SHELL_TOOLS_MAIN_LOADED
-    
+
     # 重新加载主配置
     local main_config="$HOME/.oh-my-zsh/custom/shell-tools-main.zsh"
     if [[ -f "$main_config" ]]; then
@@ -301,23 +293,23 @@ shell-tools-reload() {
 shell-tools-status() {
     local loaded_count=${#SHELL_TOOLS_MODULES_LOADED[@]}
     local failed_count=${#SHELL_TOOLS_MODULES_FAILED[@]}
-    
+
     echo "Shell Tools 状态:"
     echo "  已加载模块: $loaded_count"
     echo "  失败模块: $failed_count"
-    
+
     if [[ $failed_count -gt 0 ]]; then
         echo "  建议运行 'shell-tools-debug' 查看详细信息"
     fi
 }
 '''
         return self.file_manager.write_debug_file(debug_content)
-    
+
     def get_generation_summary(self) -> Dict[str, any]:
         """获取生成摘要信息"""
         stats = self.file_manager.get_file_stats()
         tool_summary = self.tool_detector.get_available_tools_summary()
-        
+
         return {
             'file_stats': stats,
             'tool_summary': tool_summary,
