@@ -112,10 +112,10 @@ FZF-EOF"
         _fzf_git_common --multi --ansi \
             --preview "
                 file=\$(echo {} | awk '{print \$2}')
-                status=\$(echo {} | cut -c1-2)
+                git_status=\$(echo {} | cut -c1-2)
                 echo '📄 文件: '\$file
-                echo '📊 状态: '\$status
-                case \$status in
+                echo '📊 状态: '\$git_status
+                case \$git_status in
                     'M '*) echo '🔄 已修改 (工作区)' ;;
                     ' M') echo '🔄 已修改 (暂存区)' ;;
                     'A '*) echo '➕ 新增文件' ;;
@@ -126,15 +126,31 @@ FZF-EOF"
                     *) echo '🔍 其他状态' ;;
                 esac
                 echo
-                if [[ -f \$file ]]; then
-                    echo '📝 文件内容:'
-                    $bat_cmd --color=always --style=numbers --line-range=:50 \$file 2>/dev/null || cat \$file
-                    echo
-                    echo '🔄 差异:'
-                    git diff --color=always \$file 2>/dev/null || echo '  无差异'
-                else
-                    echo '❌ 文件不存在或已删除'
-                fi
+                echo '🔄 差异内容:'
+                case \$git_status in
+                    'M '*|'MM'|'AM'|'RM'|'CM')
+                        # 工作区有修改，显示工作区差异
+                        git diff --color=always \$file 2>/dev/null || echo '  无差异'
+                        ;;
+                    ' M'|' A'|' R'|' C')
+                        # 只有暂存区修改，显示暂存区差异
+                        git diff --cached --color=always \$file 2>/dev/null || echo '  无暂存区差异'
+                        ;;
+                    '??')
+                        # 未跟踪文件，显示完整内容
+                        echo '📝 新文件内容:'
+                        $bat_cmd --color=always --style=numbers --line-range=:30 \$file 2>/dev/null || cat \$file 2>/dev/null || echo '  无法读取文件'
+                        ;;
+                    'D '*|' D')
+                        # 已删除文件，显示删除的内容
+                        echo '❌ 已删除的文件内容:'
+                        git show HEAD:\$file 2>/dev/null | $bat_cmd --color=always --style=numbers --line-range=:30 -l \${file##*.} 2>/dev/null || echo '  无法显示已删除文件'
+                        ;;
+                    *)
+                        # 其他状态，尝试显示差异
+                        git diff --color=always \$file 2>/dev/null || git diff --cached --color=always \$file 2>/dev/null || echo '  无差异可显示'
+                        ;;
+                esac
             " \
             --header='📊 Git 文件状态 | TAB: 多选 | ENTER: add | CTRL-R: reset | CTRL-/: 切换预览' \
             --bind='enter:execute-silent(git add {2})+reload(git status --porcelain)' \
