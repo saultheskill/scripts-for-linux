@@ -532,7 +532,10 @@ def install_common_software() -> bool:
         ("mtr", "网络诊断工具"),
         ("tshark", "网络包分析"),
         ("nmap", "网络扫描工具"),
-        ("fd-find", "find的现代替代品")
+        ("fd-find", "find的现代替代品"),
+        ("fdclone", "find的现代替代品v2"),
+        ("ripgrep", "grep的现代替代品"),
+        ("lazygit", "Git的图形界面")
     ]
 
     success_count = 0

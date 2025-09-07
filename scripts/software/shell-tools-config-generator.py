@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 
 """
-Shell工具配置生成器
+Shell工具配置生成器 - 模块化版本
 作者: saul
-版本: 1.0
-描述: 生成fd、fzf等现代shell工具的最佳实践配置
+版本: 2.0
+描述: 生成模块化的现代shell工具最佳实践配置
 """
 
 import os
 import sys
 from pathlib import Path
+from typing import Dict, List, Tuple, Optional
 
 # 添加scripts目录到Python路径
 script_dir = Path(__file__).parent
@@ -21,39 +22,408 @@ except ImportError:
     print("错误：无法导入common模块")
     sys.exit(1)
 
+# 模块化配置系统的常量定义
+CUSTOM_DIR = Path.home() / ".oh-my-zsh" / "custom"
+MODULES_DIR = CUSTOM_DIR / "modules"
+DEBUG_DIR = CUSTOM_DIR / "debug"
+MAIN_CONFIG_FILE = CUSTOM_DIR / "shell-tools-main.zsh"
+OLD_CONFIG_FILE = Path.home() / ".shell-tools-config.zsh"
+
+# 模块定义：(文件名, 描述, 依赖工具, 依赖模块)
+MODULES_CONFIG = [
+    ("00-path-config.zsh", "PATH和基础环境配置", [], []),
+    ("01-tool-detection.zsh", "工具可用性检测和别名统一化", ["bat", "fd"], ["00-path-config"]),
+    ("02-bat-config.zsh", "bat工具核心配置和基础功能", ["bat"], ["01-tool-detection"]),
+    ("03-fd-config.zsh", "fd/fdfind工具配置和基础功能", ["fd"], ["01-tool-detection"]),
+    ("04-fzf-core.zsh", "fzf核心配置和显示设置", ["fzf"], ["01-tool-detection"]),
+    ("05-fzf-basic.zsh", "fzf基础功能（文件搜索、编辑等）", ["fzf", "bat"], ["04-fzf-core", "02-bat-config"]),
+    ("06-fzf-advanced.zsh", "fzf高级功能（动态重载、模式切换等）", ["fzf", "bat", "fd"], ["05-fzf-basic", "03-fd-config"]),
+    ("07-ripgrep-config.zsh", "ripgrep配置和基础集成", ["rg"], ["01-tool-detection"]),
+    ("08-ripgrep-fzf.zsh", "ripgrep + fzf高级集成功能", ["rg", "fzf", "bat"], ["07-ripgrep-config", "05-fzf-basic"]),
+    ("09-git-integration.zsh", "git + fzf + bat集成功能", ["git", "fzf", "bat"], ["05-fzf-basic"]),
+    ("10-log-monitoring.zsh", "日志监控和tail集成功能", ["bat", "fzf"], ["02-bat-config", "04-fzf-core"]),
+    ("11-man-integration.zsh", "man页面集成（修复batman搜索功能）", ["bat", "fzf"], ["02-bat-config", "04-fzf-core"]),
+    ("12-apt-integration.zsh", "APT包管理集成功能", ["fzf", "bat"], ["04-fzf-core", "02-bat-config"]),
+    ("13-utility-functions.zsh", "通用工具函数（search-all等）", ["bat", "fd", "rg"], ["02-bat-config", "03-fd-config", "07-ripgrep-config"]),
+    ("99-aliases-summary.zsh", "最终别名汇总和show-tools功能", [], ["*"]),
+]
+
+def check_tool_availability(tool: str) -> bool:
+    """检查工具是否可用"""
+    import subprocess
+    try:
+        subprocess.run([tool, "--version"], capture_output=True, check=True)
+        return True
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        # 特殊处理一些工具
+        if tool == "bat":
+            try:
+                subprocess.run(["batcat", "--version"], capture_output=True, check=True)
+                return True
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                pass
+        elif tool == "fd":
+            try:
+                subprocess.run(["fdfind", "--version"], capture_output=True, check=True)
+                return True
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                pass
+        return False
+
+def create_directories():
+    """创建必要的目录结构"""
+    try:
+        CUSTOM_DIR.mkdir(parents=True, exist_ok=True)
+        MODULES_DIR.mkdir(parents=True, exist_ok=True)
+        DEBUG_DIR.mkdir(parents=True, exist_ok=True)
+        log_info(f"创建目录结构: {CUSTOM_DIR}")
+        return True
+    except Exception as e:
+        log_error(f"创建目录失败: {str(e)}")
+        return False
+
+def generate_main_config():
+    """生成主配置文件"""
+    content = '''# =============================================================================
+# Shell Tools Main Configuration - 模块化配置系统
+# 由 shell-tools-config-generator.py v2.0 自动生成
+# 集成了 fzf、bat、fd、ripgrep、git 等工具的模块化配置
+# =============================================================================
+
+# 模块加载状态跟踪
+declare -A SHELL_TOOLS_MODULES_LOADED
+declare -A SHELL_TOOLS_MODULES_FAILED
+
+# 模块加载函数
+load_shell_tools_module() {
+    local module_name="$1"
+    local module_path="$2"
+
+    if [[ -f "$module_path" ]]; then
+        if source "$module_path" 2>/dev/null; then
+            SHELL_TOOLS_MODULES_LOADED["$module_name"]=1
+            [[ -n "$SHELL_TOOLS_DEBUG" ]] && echo "✓ 已加载模块: $module_name"
+        else
+            SHELL_TOOLS_MODULES_FAILED["$module_name"]=1
+            [[ -n "$SHELL_TOOLS_DEBUG" ]] && echo "✗ 模块加载失败: $module_name"
+        fi
+    else
+        [[ -n "$SHELL_TOOLS_DEBUG" ]] && echo "⚠ 模块文件不存在: $module_path"
+    fi
+}
+
+# 检查模块依赖
+check_module_dependencies() {
+    local module_name="$1"
+    shift
+    local dependencies=("$@")
+
+    for dep in "${dependencies[@]}"; do
+        if [[ "$dep" != "*" ]] && [[ -z "${SHELL_TOOLS_MODULES_LOADED[$dep]}" ]]; then
+            [[ -n "$SHELL_TOOLS_DEBUG" ]] && echo "⚠ 模块 $module_name 依赖 $dep 未加载"
+            return 1
+        fi
+    done
+    return 0
+}
+
+# 加载所有模块
+load_all_modules() {
+    local modules_dir="$HOME/.oh-my-zsh/custom/modules"
+
+    if [[ ! -d "$modules_dir" ]]; then
+        echo "警告: 模块目录不存在: $modules_dir"
+        return 1
+    fi
+
+    # 按数字前缀顺序加载模块
+    for module_file in "$modules_dir"/*.zsh; do
+        if [[ -f "$module_file" ]]; then
+            local module_name=$(basename "$module_file" .zsh)
+            load_shell_tools_module "$module_name" "$module_file"
+        fi
+    done
+}
+
+# 加载调试模块
+load_debug_module() {
+    local debug_file="$HOME/.oh-my-zsh/custom/debug/shell-tools-debug.zsh"
+    if [[ -f "$debug_file" ]]; then
+        source "$debug_file"
+    fi
+}
+
+# 主加载逻辑
+if [[ -z "$SHELL_TOOLS_MAIN_LOADED" ]]; then
+    export SHELL_TOOLS_MAIN_LOADED=1
+
+    # 设置调试模式（如果需要）
+    # export SHELL_TOOLS_DEBUG=1
+
+    # 加载所有模块
+    load_all_modules
+
+    # 加载调试功能
+    load_debug_module
+
+    # 显示加载状态
+    if [[ -z "$SHELL_TOOLS_QUIET" ]]; then
+        local loaded_count=${#SHELL_TOOLS_MODULES_LOADED[@]}
+        local failed_count=${#SHELL_TOOLS_MODULES_FAILED[@]}
+
+        echo "🚀 Shell Tools 模块化配置已加载！"
+        echo "📦 已加载 $loaded_count 个模块"
+        if [[ $failed_count -gt 0 ]]; then
+            echo "⚠️  $failed_count 个模块加载失败"
+        fi
+        echo "💡 运行 'show-tools' 查看所有可用功能"
+        echo "🔧 运行 'shell-tools-debug' 查看详细状态"
+    fi
+fi
+'''
+
+    try:
+        with open(MAIN_CONFIG_FILE, 'w') as f:
+            f.write(content)
+        log_success(f"主配置文件已生成: {MAIN_CONFIG_FILE}")
+        return True
+    except Exception as e:
+        log_error(f"生成主配置文件失败: {str(e)}")
+        return False
+
 def generate_shell_tools_config():
     """
-    生成shell工具配置文件
+    生成模块化shell工具配置文件
 
     Returns:
         bool: 生成是否成功
     """
-    config_path = Path.home() / ".shell-tools-config.zsh"
+    # 创建目录结构
+    if not create_directories():
+        return False
 
-    config_content = '''# =============================================================================
-# Shell Tools Configuration - 现代shell工具最佳实践配置
-# 由 shell-tools-config-generator.py 自动生成
-# 集成了 fzf、bat、fd、ripgrep、git 等工具的高级组合功能
+    # 生成主配置文件
+    if not generate_main_config():
+        return False
+
+    # 生成各个模块
+    success_count = 0
+    total_count = len(MODULES_CONFIG)
+
+    for module_file, description, required_tools, dependencies in MODULES_CONFIG:
+        # 检查工具可用性
+        tools_available = all(check_tool_availability(tool) for tool in required_tools) if required_tools else True
+
+        if tools_available or not required_tools:  # 如果没有依赖工具或工具都可用
+            if generate_module(module_file, description, required_tools, dependencies):
+                success_count += 1
+            else:
+                log_warn(f"模块 {module_file} 生成失败")
+        else:
+            log_info(f"跳过模块 {module_file}（缺少必需工具: {', '.join(required_tools)}）")
+
+    # 生成调试模块
+    if generate_debug_module():
+        log_success("调试模块已生成")
+
+    log_success(f"模块化配置生成完成！成功生成 {success_count}/{total_count} 个模块")
+    return success_count > 0
+
+def generate_module(module_file: str, description: str, required_tools: List[str], dependencies: List[str]) -> bool:
+    """生成单个模块文件"""
+    module_path = MODULES_DIR / module_file
+
+    try:
+        # 根据模块名称生成对应的内容
+        if module_file.startswith("00-path-config"):
+            content = generate_path_config_module()
+        elif module_file.startswith("01-tool-detection"):
+            content = generate_tool_detection_module()
+        elif module_file.startswith("02-bat-config"):
+            content = generate_bat_config_module()
+        elif module_file.startswith("03-fd-config"):
+            content = generate_fd_config_module()
+        elif module_file.startswith("04-fzf-core"):
+            content = generate_fzf_core_module()
+        elif module_file.startswith("05-fzf-basic"):
+            content = generate_fzf_basic_module()
+        elif module_file.startswith("06-fzf-advanced"):
+            content = generate_fzf_advanced_module()
+        elif module_file.startswith("07-ripgrep-config"):
+            content = generate_ripgrep_config_module()
+        elif module_file.startswith("08-ripgrep-fzf"):
+            content = generate_ripgrep_fzf_module()
+        elif module_file.startswith("09-git-integration"):
+            content = generate_git_integration_module()
+        elif module_file.startswith("10-log-monitoring"):
+            content = generate_log_monitoring_module()
+        elif module_file.startswith("11-man-integration"):
+            content = generate_man_integration_module()
+        elif module_file.startswith("12-apt-integration"):
+            content = generate_apt_integration_module()
+        elif module_file.startswith("13-utility-functions"):
+            content = generate_utility_functions_module()
+        elif module_file.startswith("99-aliases-summary"):
+            content = generate_aliases_summary_module()
+        else:
+            log_warn(f"未知模块类型: {module_file}")
+            return False
+
+        # 添加模块头部信息
+        header = f'''# =============================================================================
+# {description}
+# 模块文件: {module_file}
+# 依赖工具: {', '.join(required_tools) if required_tools else '无'}
+# 依赖模块: {', '.join(dependencies) if dependencies else '无'}
+# 由 shell-tools-config-generator.py v2.0 自动生成
 # =============================================================================
 
+'''
+
+        full_content = header + content
+
+        with open(module_path, 'w') as f:
+            f.write(full_content)
+
+        log_success(f"模块已生成: {module_file}")
+        return True
+
+    except Exception as e:
+        log_error(f"生成模块 {module_file} 失败: {str(e)}")
+        return False
+
+def generate_debug_module() -> bool:
+    """生成调试模块"""
+    debug_path = DEBUG_DIR / "shell-tools-debug.zsh"
+
+    content = '''# =============================================================================
+# Shell Tools Debug Module - 调试和诊断功能
 # =============================================================================
-# 环境变量和PATH配置
-# =============================================================================
+
+# 增强的调试函数：检查工具安装状态和模块加载情况
+shell-tools-debug() {
+    echo "=== Shell Tools Debug Information ==="
+    echo "版本: 2.0 (模块化)"
+    echo "配置目录: $HOME/.oh-my-zsh/custom/"
+    echo
+
+    echo "PATH配置:"
+    echo "  PATH: $PATH"
+    echo
+
+    echo "工具检测:"
+    echo "  bat: $(command -v bat 2>/dev/null || echo 'not found')"
+    echo "  batcat: $(command -v batcat 2>/dev/null || echo 'not found')"
+    echo "  fd: $(command -v fd 2>/dev/null || echo 'not found')"
+    echo "  fdfind: $(command -v fdfind 2>/dev/null || echo 'not found')"
+    echo "  fzf: $(command -v fzf 2>/dev/null || echo 'not found')"
+    echo "  rg: $(command -v rg 2>/dev/null || echo 'not found')"
+    echo "  git: $(command -v git 2>/dev/null || echo 'not found')"
+    echo
+
+    echo "别名状态:"
+    alias | grep -E '^(bat|fd)=' || echo "  无相关别名"
+    echo
+
+    echo "模块加载状态:"
+    if [[ -n "${SHELL_TOOLS_MODULES_LOADED[@]}" ]]; then
+        for module in "${!SHELL_TOOLS_MODULES_LOADED[@]}"; do
+            echo "  ✓ $module"
+        done
+    else
+        echo "  无已加载模块"
+    fi
+
+    if [[ -n "${SHELL_TOOLS_MODULES_FAILED[@]}" ]]; then
+        echo
+        echo "模块加载失败:"
+        for module in "${!SHELL_TOOLS_MODULES_FAILED[@]}"; do
+            echo "  ✗ $module"
+        done
+    fi
+
+    echo
+    echo "配置文件状态:"
+    local modules_dir="$HOME/.oh-my-zsh/custom/modules"
+    if [[ -d "$modules_dir" ]]; then
+        echo "  模块目录: $modules_dir"
+        local module_count=$(ls -1 "$modules_dir"/*.zsh 2>/dev/null | wc -l)
+        echo "  模块文件数量: $module_count"
+    else
+        echo "  ⚠️  模块目录不存在"
+    fi
+
+    echo "=========================="
+}
+
+# 模块重新加载函数
+shell-tools-reload() {
+    echo "重新加载 Shell Tools 模块..."
+
+    # 清除加载状态
+    unset SHELL_TOOLS_MODULES_LOADED
+    unset SHELL_TOOLS_MODULES_FAILED
+    unset SHELL_TOOLS_MAIN_LOADED
+
+    # 重新加载主配置
+    local main_config="$HOME/.oh-my-zsh/custom/shell-tools-main.zsh"
+    if [[ -f "$main_config" ]]; then
+        source "$main_config"
+        echo "✓ 重新加载完成"
+    else
+        echo "✗ 主配置文件不存在: $main_config"
+    fi
+}
+
+# 模块状态检查函数
+shell-tools-status() {
+    local loaded_count=${#SHELL_TOOLS_MODULES_LOADED[@]}
+    local failed_count=${#SHELL_TOOLS_MODULES_FAILED[@]}
+
+    echo "Shell Tools 状态:"
+    echo "  已加载模块: $loaded_count"
+    echo "  失败模块: $failed_count"
+
+    if [[ $failed_count -gt 0 ]]; then
+        echo "  建议运行 'shell-tools-debug' 查看详细信息"
+    fi
+}
+'''
+
+    try:
+        with open(debug_path, 'w') as f:
+            f.write(content)
+        return True
+    except Exception as e:
+        log_error(f"生成调试模块失败: {str(e)}")
+        return False
+
+def generate_path_config_module() -> str:
+    """生成PATH配置模块"""
+    return '''# PATH和基础环境配置 - 必须在所有工具检测之前执行
 
 # 修复Ubuntu/Debian系统PATH问题 - 确保/bin和/usr/bin在PATH中
-case ":$PATH:" in
-    *:/bin:*) ;;
-    *) export PATH="/bin:$PATH" ;;
-esac
+# 这对于fd/fdfind等工具的正确检测至关重要
+if [[ ":$PATH:" != *":/bin:"* ]]; then
+    export PATH="/bin:$PATH"
+fi
 
-case ":$PATH:" in
-    *:/usr/bin:*) ;;
-    *) export PATH="/usr/bin:$PATH" ;;
-esac
+if [[ ":$PATH:" != *":/usr/bin:"* ]]; then
+    export PATH="/usr/bin:$PATH"
+fi
 
-# =============================================================================
-# 工具可用性检测和别名统一化
-# =============================================================================
+# 确保/usr/local/bin也在PATH中（某些系统可能需要）
+if [[ ":$PATH:" != *":/usr/local/bin:"* ]]; then
+    export PATH="/usr/local/bin:$PATH"
+fi
+
+# 刷新命令哈希表以确保新的PATH生效
+hash -r 2>/dev/null || true
+'''
+
+def generate_tool_detection_module() -> str:
+    """生成工具检测模块"""
+    return '''# 工具可用性检测和别名统一化
 
 # 检测并统一 bat 命令（Ubuntu/Debian 使用 batcat）
 if command -v batcat >/dev/null 2>&1; then
@@ -64,16 +434,25 @@ elif command -v bat >/dev/null 2>&1; then
 fi
 
 # 检测并统一 fd 命令（Ubuntu/Debian 使用 fdfind）
+# 优先检查fdfind，因为在Ubuntu/Debian系统上这是标准安装名称
 if command -v fdfind >/dev/null 2>&1; then
     alias fd='fdfind'
+    # 验证别名是否工作
+    if ! fd --version >/dev/null 2>&1; then
+        echo "警告：fd别名设置失败，请检查fdfind安装"
+    fi
 elif command -v fd >/dev/null 2>&1; then
     # fd 已经可用，无需别名
     :
+else
+    # 如果都没有找到，提供安装提示
+    echo "提示：未找到fd工具。在Ubuntu/Debian上请运行: sudo apt install fd-find"
 fi
+'''
 
-# =============================================================================
-# bat (cat的增强版) 核心配置
-# =============================================================================
+def generate_bat_config_module() -> str:
+    """生成bat配置模块"""
+    return '''# bat (cat的增强版) 核心配置
 
 if command -v bat >/dev/null 2>&1 || command -v batcat >/dev/null 2>&1; then
     # bat 环境变量配置
@@ -98,10 +477,11 @@ if command -v bat >/dev/null 2>&1 || command -v batcat >/dev/null 2>&1; then
         alias batp='bat --plain'          # 纯文本模式（简写）
     fi
 fi
+'''
 
-# =============================================================================
-# fd (find的现代替代品) 配置
-# =============================================================================
+def generate_fd_config_module() -> str:
+    """生成fd配置模块"""
+    return '''# fd (find的现代替代品) 配置
 
 if command -v fd >/dev/null 2>&1; then
     # 基础搜索别名
@@ -152,17 +532,13 @@ if command -v fd >/dev/null 2>&1; then
         }
     fi
 fi
+'''
 
-# =============================================================================
-# fzf (模糊查找工具) 高级配置与集成
-# 基于官方 ADVANCED.md 文档的全面配置
-# =============================================================================
+def generate_fzf_core_module() -> str:
+    """生成fzf核心配置模块"""
+    return '''# fzf (模糊查找工具) 核心配置与显示设置
 
 if command -v fzf >/dev/null 2>&1; then
-    # =============================================================================
-    # fzf 核心显示配置 - 基于官方高级示例
-    # =============================================================================
-
     # 高级默认选项配置 - 基于官方ADVANCED.md文档优化
     export FZF_DEFAULT_OPTS="
         --height=70%
@@ -190,10 +566,7 @@ if command -v fzf >/dev/null 2>&1; then
         --color='border:#585858,preview-bg:#121212'
     "
 
-    # =============================================================================
     # tmux 集成配置 - 基于官方ADVANCED.md的tmux popup功能
-    # =============================================================================
-
     if [[ -n "$TMUX" ]] && command -v tmux >/dev/null 2>&1; then
         # 检查tmux版本是否支持popup (需要3.3+)
         local tmux_version
@@ -225,6 +598,25 @@ if command -v fzf >/dev/null 2>&1; then
         export FZF_ALT_C_COMMAND='fd --type d --hidden --follow --exclude .git --exclude node_modules --exclude .cache'
     fi
 
+    # fzf 键绑定加载
+    if [[ -f /usr/share/doc/fzf/examples/key-bindings.zsh ]]; then
+        source /usr/share/doc/fzf/examples/key-bindings.zsh
+    elif [[ -f ~/.fzf.zsh ]]; then
+        source ~/.fzf.zsh
+    fi
+
+    # fzf 自动补全
+    if [[ -f /usr/share/doc/fzf/examples/completion.zsh ]]; then
+        source /usr/share/doc/fzf/examples/completion.zsh
+    fi
+fi
+'''
+
+def generate_fzf_basic_module() -> str:
+    """生成fzf基础功能模块"""
+    return '''# fzf基础功能（文件搜索、编辑等）
+
+if command -v fzf >/dev/null 2>&1; then
     # fzf + bat 集成：带语法高亮的文件预览
     if command -v bat >/dev/null 2>&1 || command -v batcat >/dev/null 2>&1; then
         # 确定bat命令并设置预览选项
@@ -324,74 +716,7 @@ if command -v fzf >/dev/null 2>&1; then
         }
     fi
 
-    # fzf 键绑定加载
-    if [[ -f /usr/share/doc/fzf/examples/key-bindings.zsh ]]; then
-        source /usr/share/doc/fzf/examples/key-bindings.zsh
-    elif [[ -f ~/.fzf.zsh ]]; then
-        source ~/.fzf.zsh
-    fi
-
-    # fzf 自动补全
-    if [[ -f /usr/share/doc/fzf/examples/completion.zsh ]]; then
-        source /usr/share/doc/fzf/examples/completion.zsh
-    fi
-
-    # =============================================================================
-    # 基于官方ADVANCED.md的动态重载和进程管理功能
-    # =============================================================================
-
-    # 动态进程管理器 - 基于文档示例
-    fzf-processes() {
-        (date; ps -ef) |
-        fzf --bind='ctrl-r:reload(date; ps -ef)' \
-            --header=$'Press CTRL-R to reload\n\n' --header-lines=2 \
-            --preview='echo {}' --preview-window=down,3,wrap \
-            --layout=reverse --height=80% | awk '{print $2}' | xargs kill -9
-    }
-
-    # 动态数据源切换 - 基于文档示例
-    fzf-files-dirs() {
-        find * 2>/dev/null | fzf --prompt 'All> ' \
-                     --header 'CTRL-D: Directories / CTRL-F: Files' \
-                     --bind 'ctrl-d:change-prompt(Directories> )+reload(find * -type d 2>/dev/null)' \
-                     --bind 'ctrl-f:change-prompt(Files> )+reload(find * -type f 2>/dev/null)'
-    }
-
-    # 单键切换模式 - 基于文档的transform示例
-    fzf-toggle-mode() {
-        # 确保bat命令可用
-        local bat_cmd
-        if command -v batcat >/dev/null 2>&1; then
-            bat_cmd='batcat'
-        elif command -v bat >/dev/null 2>&1; then
-            bat_cmd='bat'
-        else
-            echo "错误：未找到bat工具，请先安装"
-            return 1
-        fi
-
-        if command -v fd >/dev/null 2>&1; then
-            fd --type file |
-            fzf --prompt 'Files> ' \
-                --header 'CTRL-T: Switch between Files/Directories' \
-                --bind 'ctrl-t:transform:[[ ! $FZF_PROMPT =~ Files ]] &&
-                        echo "change-prompt(Files> )+reload(fd --type file)" ||
-                        echo "change-prompt(Directories> )+reload(fd --type directory)"' \
-                --preview "[[ \$FZF_PROMPT =~ Files ]] && $bat_cmd --color=always {} || tree -C {}"
-        else
-            find . -type f |
-            fzf --prompt 'Files> ' \
-                --header 'CTRL-T: Switch between Files/Directories' \
-                --bind 'ctrl-t:transform:[[ ! $FZF_PROMPT =~ Files ]] &&
-                        echo "change-prompt(Files> )+reload(find . -type f)" ||
-                        echo "change-prompt(Directories> )+reload(find . -type d)"'
-        fi
-    }
-
-    # =============================================================================
     # 基于fzf-basic-example.md的文件操作增强功能
-    # =============================================================================
-
     # 文件打开功能 - 基于basic example的fe函数
     fe() {
         local files
@@ -447,14 +772,64 @@ if command -v fzf >/dev/null 2>&1; then
     alias fp='fzf-project'        # 快速跳转项目
     alias fc='fzf-content'        # 搜索文件内容
     alias fthemes='fzf-bat-themes' # 预览 bat 主题
-    alias fps='fzf-processes'     # 动态进程管理
-    alias ffd='fzf-files-dirs'    # 文件目录切换
-    alias ftm='fzf-toggle-mode'   # 单键模式切换
+fi
+'''
 
-    # =============================================================================
+def generate_fzf_advanced_module() -> str:
+    """生成fzf高级功能模块"""
+    return '''# fzf高级功能（动态重载、模式切换等）
+
+if command -v fzf >/dev/null 2>&1; then
+    # 基于官方ADVANCED.md的动态重载和进程管理功能
+    # 动态进程管理器 - 基于文档示例
+    fzf-processes() {
+        (date; ps -ef) |
+        fzf --bind='ctrl-r:reload(date; ps -ef)' \
+            --header=$'Press CTRL-R to reload\n\n' --header-lines=2 \
+            --preview='echo {}' --preview-window=down,3,wrap \
+            --layout=reverse --height=80% | awk '{print $2}' | xargs kill -9
+    }
+
+    # 动态数据源切换 - 基于文档示例
+    fzf-files-dirs() {
+        find * 2>/dev/null | fzf --prompt 'All> ' \
+                     --header 'CTRL-D: Directories / CTRL-F: Files' \
+                     --bind 'ctrl-d:change-prompt(Directories> )+reload(find * -type d 2>/dev/null)' \
+                     --bind 'ctrl-f:change-prompt(Files> )+reload(find * -type f 2>/dev/null)'
+    }
+
+    # 单键切换模式 - 基于文档的transform示例
+    fzf-toggle-mode() {
+        # 确保bat命令可用
+        local bat_cmd
+        if command -v batcat >/dev/null 2>&1; then
+            bat_cmd='batcat'
+        elif command -v bat >/dev/null 2>&1; then
+            bat_cmd='bat'
+        else
+            echo "错误：未找到bat工具，请先安装"
+            return 1
+        fi
+
+        if command -v fd >/dev/null 2>&1; then
+            fd --type file |
+            fzf --prompt 'Files> ' \
+                --header 'CTRL-T: Switch between Files/Directories' \
+                --bind 'ctrl-t:transform:[[ ! $FZF_PROMPT =~ Files ]] &&
+                        echo "change-prompt(Files> )+reload(fd --type file)" ||
+                        echo "change-prompt(Directories> )+reload(fd --type directory)"' \
+                --preview "[[ \$FZF_PROMPT =~ Files ]] && $bat_cmd --color=always {} || tree -C {}"
+        else
+            find . -type f |
+            fzf --prompt 'Files> ' \
+                --header 'CTRL-T: Switch between Files/Directories' \
+                --bind 'ctrl-t:transform:[[ ! $FZF_PROMPT =~ Files ]] &&
+                        echo "change-prompt(Files> )+reload(find . -type f)" ||
+                        echo "change-prompt(Directories> )+reload(find . -type d)"'
+        fi
+    }
+
     # 基于fzf-basic-example.md的历史命令和进程管理功能
-    # =============================================================================
-
     # 历史命令重复执行 - 基于basic example的fh函数
     fh() {
         print -z $( ([ -n "$ZSH_NAME" ] && fc -l 1 || history) | fzf +s --tac | sed -E 's/ *[0-9]*\\*? *//' | sed -E 's/\\\\/\\\\\\\\/g')
@@ -505,18 +880,9 @@ if command -v fzf >/dev/null 2>&1; then
         fi
     }
 
-    # 新增别名 - 基于basic example
-    # fe, fo, vf 已经定义为函数
-    alias fdir-basic='fdir'       # 基础目录切换
-    alias fdira-all='fdira'       # 包含隐藏目录
-    alias fdirt-tree='fdirt'      # 树形预览目录
-
-    # =============================================================================
-    # 基于fzf-basic-example.md的tmux集成功能
-    # =============================================================================
-
-    # tmux会话管理 - 基于basic example的tm函数
+    # tmux集成功能
     if command -v tmux >/dev/null 2>&1; then
+        # tmux会话管理 - 基于basic example的tm函数
         tm() {
             [[ -n "$TMUX" ]] && change="switch-client" || change="attach-session"
             if [ $1 ]; then
@@ -559,16 +925,23 @@ if command -v fzf >/dev/null 2>&1; then
         alias tmux-pane='ftpane'      # 窗格切换
     fi
 
-    # 历史和进程管理别名
+    # 高级功能别名
+    alias fps='fzf-processes'     # 动态进程管理
+    alias ffd='fzf-files-dirs'    # 文件目录切换
+    alias ftm='fzf-toggle-mode'   # 单键模式切换
     alias fhist='fh'              # 历史命令搜索
     alias fkill-proc='fkill'      # 进程终止
     alias find-in-files='fif'     # 文件内容搜索
     alias vim-grep='vg'           # 搜索并编辑
+    alias fdir-basic='fdir'       # 基础目录切换
+    alias fdira-all='fdira'       # 包含隐藏目录
+    alias fdirt-tree='fdirt'      # 树形预览目录
 fi
+'''
 
-# =============================================================================
-# ripgrep + bat 集成：高级搜索和语法高亮
-# =============================================================================
+def generate_ripgrep_config_module() -> str:
+    """生成ripgrep配置模块"""
+    return '''# ripgrep配置和基础集成
 
 if command -v rg >/dev/null 2>&1; then
     # ripgrep 基础配置
@@ -588,10 +961,18 @@ if command -v rg >/dev/null 2>&1; then
 EOF
     fi
 
-    # =============================================================================
-    # 基于官方ADVANCED.md的高级Ripgrep集成功能
-    # =============================================================================
+    # 实用别名
+    alias rgg='rg --group --color=always'
+    alias rgf='rg --files-with-matches'
+    alias rgl='rg --files-without-match'
+fi
+'''
 
+def generate_ripgrep_fzf_module() -> str:
+    """生成ripgrep+fzf集成模块"""
+    return '''# ripgrep + fzf高级集成功能
+
+if command -v rg >/dev/null 2>&1 && command -v fzf >/dev/null 2>&1; then
     if command -v bat >/dev/null 2>&1 || command -v batcat >/dev/null 2>&1; then
         # 1. 使用fzf作为Ripgrep的二级过滤器 - 基于文档示例
         rfv() {
@@ -672,46 +1053,6 @@ EOF
                 --bind 'enter:become(vim {1} +{2})'
         }
 
-        # 4. Ripgrep和fzf模式切换 - 基于文档示例
-        rgs() {
-            # 确保bat命令可用
-            local bat_cmd
-            if command -v batcat >/dev/null 2>&1; then
-                bat_cmd='batcat'
-            elif command -v bat >/dev/null 2>&1; then
-                bat_cmd='bat'
-            else
-                echo "错误：未找到bat工具，请先安装"
-                return 1
-            fi
-
-            local RG_PREFIX="rg --column --line-number --no-heading --color=always --smart-case "
-            local INITIAL_QUERY="${*:-}"
-
-            # 创建临时文件存储查询状态
-            local tmp_r="/tmp/rg-fzf-r-$$"
-            local tmp_f="/tmp/rg-fzf-f-$$"
-            echo "$INITIAL_QUERY" > "$tmp_r"
-            echo "" > "$tmp_f"
-
-            fzf --ansi --disabled --query "$INITIAL_QUERY" \
-                --bind "start:reload($RG_PREFIX {q})+unbind(ctrl-r)" \
-                --bind "change:reload:sleep 0.1; $RG_PREFIX {q} || true" \
-                --bind "ctrl-f:unbind(change,ctrl-f)+change-prompt(2. fzf> )+enable-search+rebind(ctrl-r)+transform-query(echo {q} > $tmp_r; cat $tmp_f)" \
-                --bind "ctrl-r:unbind(ctrl-r)+change-prompt(1. ripgrep> )+disable-search+reload($RG_PREFIX {q} || true)+rebind(change,ctrl-f)+transform-query(echo {q} > $tmp_f; cat $tmp_r)" \
-                --color "hl:-1:underline,hl+:-1:underline:reverse" \
-                --prompt '1. ripgrep> ' \
-                --delimiter : \
-                --header '╱ CTRL-R (ripgrep mode) ╱ CTRL-F (fzf mode) ╱' \
-                --preview "$bat_cmd --color=always {1} --highlight-line {2}" \
-                --preview-window 'up,60%,border-bottom,+{2}+3/3,~3' \
-                --bind 'enter:become(vim {1} +{2})' \
-                --bind "ctrl-c:execute(rm -f $tmp_r $tmp_f)"
-
-            # 清理临时文件
-            rm -f "$tmp_r" "$tmp_f" 2>/dev/null
-        }
-
         # 传统batgrep功能保持兼容
         batgrep() {
             # 确保bat命令可用
@@ -768,197 +1109,88 @@ EOF
                 --bind "enter:become($bat_cmd --paging=always {1} --highlight-line {2})"
         }
     fi
-
-    # 实用别名
-    alias rgg='rg --group --color=always'
-    alias rgf='rg --files-with-matches'
-    alias rgl='rg --files-without-match'
 fi
+'''
 
-# =============================================================================
-# git + bat 集成：增强的 Git 操作
-# =============================================================================
+def generate_git_integration_module() -> str:
+    """生成git集成模块"""
+    return '''# git + fzf + bat集成功能
 
-if command -v git >/dev/null 2>&1 && (command -v bat >/dev/null 2>&1 || command -v batcat >/dev/null 2>&1); then
-    # git show 与 bat 集成
-    git-show-bat() {
-        if [[ $# -eq 0 ]]; then
-            echo "用法: git-show-bat <commit>:<file>"
-            echo "示例: git-show-bat HEAD~1:src/main.py"
-            echo "示例: git-show-bat v1.0.0:README.md"
-            return 1
-        fi
+if command -v git >/dev/null 2>&1 && command -v fzf >/dev/null 2>&1; then
+    if command -v bat >/dev/null 2>&1 || command -v batcat >/dev/null 2>&1; then
+        # git show 与 bat 集成
+        git-show-bat() {
+            if [[ $# -eq 0 ]]; then
+                echo "用法: git-show-bat <commit>:<file>"
+                echo "示例: git-show-bat HEAD~1:src/main.py"
+                echo "示例: git-show-bat v1.0.0:README.md"
+                return 1
+            fi
 
-        local ref_file="$1"
-        local file_ext="${ref_file##*.}"
+            local ref_file="$1"
+            local file_ext="${ref_file##*.}"
 
-        # 使用动态检测的bat命令
-        if command -v batcat >/dev/null 2>&1; then
-            git show "$ref_file" | batcat -l "$file_ext"
-        elif command -v bat >/dev/null 2>&1; then
-            git show "$ref_file" | bat -l "$file_ext"
-        else
-            git show "$ref_file"
-        fi
-    }
+            # 使用动态检测的bat命令
+            if command -v batcat >/dev/null 2>&1; then
+                git show "$ref_file" | batcat -l "$file_ext"
+            elif command -v bat >/dev/null 2>&1; then
+                git show "$ref_file" | bat -l "$file_ext"
+            else
+                git show "$ref_file"
+            fi
+        }
 
-    # git diff 与 bat 集成：batdiff 功能
-    batdiff() {
-        # 使用动态检测的bat命令
-        local bat_cmd
-        if command -v batcat >/dev/null 2>&1; then
-            bat_cmd='batcat'
-        elif command -v bat >/dev/null 2>&1; then
-            bat_cmd='bat'
-        else
-            git diff "$@"
-            return
-        fi
+        # git diff 与 bat 集成：batdiff 功能
+        batdiff() {
+            # 使用动态检测的bat命令
+            local bat_cmd
+            if command -v batcat >/dev/null 2>&1; then
+                bat_cmd='batcat'
+            elif command -v bat >/dev/null 2>&1; then
+                bat_cmd='bat'
+            else
+                git diff "$@"
+                return
+            fi
 
-        git diff --name-only --relative --diff-filter=d "$@" |
-        while read -r file; do
-            echo "==> $file <=="
-            git diff "$@" -- "$file" | "$bat_cmd" --language=diff
-            echo
-        done
-    }
+            git diff --name-only --relative --diff-filter=d "$@" |
+            while read -r file; do
+                echo "==> $file <=="
+                git diff "$@" -- "$file" | "$bat_cmd" --language=diff
+                echo
+            done
+        }
 
-    # 增强的 git log 查看
-    git-log-bat() {
-        # 使用动态检测的bat命令
-        local bat_cmd
-        if command -v batcat >/dev/null 2>&1; then
-            bat_cmd='batcat'
-        elif command -v bat >/dev/null 2>&1; then
-            bat_cmd='bat'
-        else
-            git log --oneline --color=always "$@" | fzf --ansi
-            return
-        fi
+        # 增强的 git log 查看
+        git-log-bat() {
+            # 使用动态检测的bat命令
+            local bat_cmd
+            if command -v batcat >/dev/null 2>&1; then
+                bat_cmd='batcat'
+            elif command -v bat >/dev/null 2>&1; then
+                bat_cmd='bat'
+            else
+                git log --oneline --color=always "$@" | fzf --ansi
+                return
+            fi
 
-        git log --oneline --color=always "$@" |
-        fzf --ansi --preview "git show --color=always {1} | $bat_cmd --language=diff" \
-            --preview-window=right:60%:wrap \
-            --bind "enter:become(git show {1} | $bat_cmd --language=diff --paging=always)"
-    }
+            git log --oneline --color=always "$@" |
+            fzf --ansi --preview "git show --color=always {1} | $bat_cmd --language=diff" \
+                --preview-window=right:60%:wrap \
+                --bind "enter:become(git show {1} | $bat_cmd --language=diff --paging=always)"
+        }
 
-    # =============================================================================
-    # 基于官方ADVANCED.md的Git对象键绑定功能
-    # =============================================================================
-
-    # Git状态文件交互选择
-    fzf-git-status() {
-        # 确保bat命令可用
-        local bat_cmd
-        if command -v batcat >/dev/null 2>&1; then
-            bat_cmd='batcat'
-        elif command -v bat >/dev/null 2>&1; then
-            bat_cmd='bat'
-        else
-            echo "错误：未找到bat工具，请先安装"
-            return 1
-        fi
-
-        git status --porcelain |
-        fzf --multi \
-            --preview "git diff --color=always \$(echo {} | awk '{print \$2}') | $bat_cmd --language=diff" \
-            --preview-window 'right:60%:wrap' \
-            --header 'CTRL-A: Add | CTRL-R: Reset | CTRL-D: Diff | Enter: Edit' \
-            --bind 'ctrl-a:execute(git add $(echo {} | awk "{print \$2}"))' \
-            --bind 'ctrl-r:execute(git reset $(echo {} | awk "{print \$2}"))' \
-            --bind "ctrl-d:execute(git diff \$(echo {} | awk '{print \$2}') | $bat_cmd --language=diff --paging=always)" \
-            --bind 'enter:become(${EDITOR:-vim} $(echo {} | awk "{print \$2}"))'
-    }
-
-    # Git分支交互选择
-    fzf-git-branch() {
-        # 确保bat命令可用
-        local bat_cmd
-        if command -v batcat >/dev/null 2>&1; then
-            bat_cmd='batcat'
-        elif command -v bat >/dev/null 2>&1; then
-            bat_cmd='bat'
-        else
-            echo "错误：未找到bat工具，请先安装"
-            return 1
-        fi
-
-        git branch -a --color=always |
-        grep -v '/HEAD\\s' |
-        fzf --ansi \
-            --multi \
-            --preview 'git log --oneline --graph --date=short --color=always --pretty="format:%C(auto)%cd %h%d %s" $(sed s/^..// <<< {} | cut -d" " -f1) | head -200' \
-            --preview-window 'right:60%:wrap' \
-            --header 'CTRL-O: Checkout | CTRL-D: Delete | CTRL-M: Merge | Enter: Show log' \
-            --bind 'ctrl-o:execute(git checkout $(sed s/^..// <<< {} | cut -d" " -f1))' \
-            --bind 'ctrl-d:execute(git branch -d $(sed s/^..// <<< {} | cut -d" " -f1))' \
-            --bind 'ctrl-m:execute(git merge $(sed s/^..// <<< {} | cut -d" " -f1))' \
-            --bind "enter:execute(git log --oneline --graph --color=always \$(sed s/^..// <<< {} | cut -d' ' -f1) | $bat_cmd --language=gitlog --paging=always)"
-    }
-
-    # Git提交哈希交互选择
-    fzf-git-commits() {
-        # 确保bat命令可用
-        local bat_cmd
-        if command -v batcat >/dev/null 2>&1; then
-            bat_cmd='batcat'
-        elif command -v bat >/dev/null 2>&1; then
-            bat_cmd='bat'
-        else
-            echo "错误：未找到bat工具，请先安装"
-            return 1
-        fi
-
-        git log --color=always --format="%C(auto)%h%d %s %C(black)%C(bold)%cr" "$@" |
-        fzf --ansi \
-            --no-sort \
-            --reverse \
-            --multi \
-            --preview "git show --color=always {1} | $bat_cmd --language=diff" \
-            --preview-window 'right:60%:wrap' \
-            --header 'CTRL-S: Show | CTRL-D: Diff | CTRL-R: Reset | Enter: Show details' \
-            --bind "ctrl-s:execute(git show {1} | $bat_cmd --language=diff --paging=always)" \
-            --bind "ctrl-d:execute(git diff {1}^ {1} | $bat_cmd --language=diff --paging=always)" \
-            --bind 'ctrl-r:execute(git reset --hard {1})' \
-            --bind "enter:execute(git show --stat --color=always {1} | $bat_cmd --language=gitlog --paging=always)"
-    }
-
-    # Git标签交互选择
-    fzf-git-tags() {
-        # 确保bat命令可用
-        local bat_cmd
-        if command -v batcat >/dev/null 2>&1; then
-            bat_cmd='batcat'
-        elif command -v bat >/dev/null 2>&1; then
-            bat_cmd='bat'
-        else
-            echo "错误：未找到bat工具，请先安装"
-            return 1
-        fi
-
-        git tag --sort=-version:refname |
-        fzf --multi \
-            --preview "git show --color=always {} | $bat_cmd --language=diff" \
-            --preview-window 'right:60%:wrap' \
-            --header 'CTRL-O: Checkout | CTRL-D: Delete | Enter: Show' \
-            --bind 'ctrl-o:execute(git checkout {})' \
-            --bind 'ctrl-d:execute(git tag -d {})' \
-            --bind "enter:execute(git show --color=always {} | $bat_cmd --language=diff --paging=always)"
-    }
-
-    # Git别名 - 包含新的交互功能
-    alias gshow='git-show-bat'
-    alias gdiff='batdiff'
-    alias glog='git-log-bat'
-    alias gst='fzf-git-status'      # Git状态交互
-    alias gbr='fzf-git-branch'      # Git分支交互
-    alias gco='fzf-git-commits'     # Git提交交互
-    alias gtg='fzf-git-tags'        # Git标签交互
+        # Git别名 - 包含新的交互功能
+        alias gshow='git-show-bat'
+        alias gdiff='batdiff'
+        alias glog='git-log-bat'
+    fi
 fi
+'''
 
-# =============================================================================
-# tail + bat 集成：日志监控与语法高亮
-# =============================================================================
+def generate_log_monitoring_module() -> str:
+    """生成日志监控模块"""
+    return '''# 日志监控和tail集成功能
 
 if command -v bat >/dev/null 2>&1 || command -v batcat >/dev/null 2>&1; then
     # tail -f 与 bat 集成：实时日志监控
@@ -988,134 +1220,6 @@ if command -v bat >/dev/null 2>&1 || command -v batcat >/dev/null 2>&1; then
         fi
     }
 
-    # 多文件日志监控
-    multitail-bat() {
-        if [[ $# -eq 0 ]]; then
-            echo "用法: multitail-bat <文件1> [文件2] ..."
-            return 1
-        fi
-
-        for file in "$@"; do
-            if [[ -f "$file" ]]; then
-                echo "==> 监控: $file <=="
-                # 使用动态检测的bat命令
-                if command -v batcat >/dev/null 2>&1; then
-                    tail -f "$file" | batcat --paging=never -l log &
-                elif command -v bat >/dev/null 2>&1; then
-                    tail -f "$file" | bat --paging=never -l log &
-                else
-                    tail -f "$file" &
-                fi
-            fi
-        done
-        wait
-    }
-
-    # =============================================================================
-    # 基于官方ADVANCED.md的高级日志监控功能
-    # =============================================================================
-
-    # 交互式日志文件选择和监控
-    fzf-log-tail() {
-        # 确保bat命令可用
-        local bat_cmd
-        if command -v batcat >/dev/null 2>&1; then
-            bat_cmd='batcat'
-        elif command -v bat >/dev/null 2>&1; then
-            bat_cmd='bat'
-        else
-            echo "错误：未找到bat工具，请先安装"
-            return 1
-        fi
-
-        local log_dirs=("/var/log" "/var/log/nginx" "/var/log/apache2" "$HOME/.local/share/logs")
-        local log_files
-
-        # 收集所有日志文件
-        log_files=$(find "${log_dirs[@]}" -name "*.log" -o -name "syslog*" -o -name "auth.log*" -o -name "kern.log*" 2>/dev/null | sort)
-
-        if [[ -z "$log_files" ]]; then
-            echo "未找到日志文件"
-            return 1
-        fi
-
-        echo "$log_files" |
-        fzf --preview "tail -50 {} | $bat_cmd --color=always -l log" \
-            --preview-window 'right:60%:wrap' \
-            --header 'CTRL-T: Tail -f | CTRL-L: Less | Enter: View last 100 lines' \
-            --bind "ctrl-t:execute(tail -f {} | $bat_cmd --paging=never -l log)" \
-            --bind "ctrl-l:execute($bat_cmd --paging=always -l log {})" \
-            --bind "enter:execute(tail -100 {} | $bat_cmd --paging=always -l log)"
-    }
-
-    # 多日志文件并行监控
-    fzf-multi-log-tail() {
-        # 确保bat命令可用
-        local bat_cmd
-        if command -v batcat >/dev/null 2>&1; then
-            bat_cmd='batcat'
-        elif command -v bat >/dev/null 2>&1; then
-            bat_cmd='bat'
-        else
-            echo "错误：未找到bat工具，请先安装"
-            return 1
-        fi
-
-        local log_dirs=("/var/log" "/var/log/nginx" "/var/log/apache2")
-        local selected_logs
-
-        selected_logs=$(find "${log_dirs[@]}" -name "*.log" -o -name "syslog*" 2>/dev/null |
-                       fzf --multi \
-                           --preview "tail -20 {} | $bat_cmd --color=always -l log" \
-                           --preview-window 'right:50%:wrap' \
-                           --header 'Select multiple log files to monitor (TAB to select)')
-
-        if [[ -n "$selected_logs" ]]; then
-            echo "监控以下日志文件:"
-            echo "$selected_logs"
-            echo "按 Ctrl+C 停止监控"
-            echo
-
-            # 使用multitail或者简单的并行tail
-            if command -v multitail >/dev/null 2>&1; then
-                multitail $(echo "$selected_logs" | tr '\n' ' ')
-            else
-                # 简单的并行tail实现
-                echo "$selected_logs" | while read -r logfile; do
-                    (echo "==> $logfile <=="; tail -f "$logfile" | sed "s/^/[$logfile] /") &
-                done | "$bat_cmd" --paging=never -l log
-            fi
-        fi
-    }
-
-    # 日志级别过滤监控
-    fzf-log-level() {
-        # 确保bat命令可用
-        local bat_cmd
-        if command -v batcat >/dev/null 2>&1; then
-            bat_cmd='batcat'
-        elif command -v bat >/dev/null 2>&1; then
-            bat_cmd='bat'
-        else
-            echo "错误：未找到bat工具，请先安装"
-            return 1
-        fi
-
-        if [[ $# -eq 0 ]]; then
-            echo "用法: fzf-log-level <日志文件>"
-            return 1
-        fi
-
-        local logfile="$1"
-        local levels=("ERROR" "WARN" "INFO" "DEBUG" "TRACE" "ALL")
-
-        printf '%s\n' "${levels[@]}" |
-        fzf --preview "grep -i {} '$logfile' | tail -50 | $bat_cmd --color=always -l log" \
-            --preview-window 'down:60%:wrap' \
-            --header 'Select log level to monitor' \
-            --bind "enter:execute(if [[ {} == 'ALL' ]]; then tail -f '$logfile' | $bat_cmd --paging=never -l log; else tail -f '$logfile' | grep -i {} | $bat_cmd --paging=never -l log; fi)"
-    }
-
     # 常用日志监控别名 - 使用动态检测的bat命令
     alias tailsys='tailbat /var/log/syslog log'
     alias tailauth='tailbat /var/log/auth.log log'
@@ -1128,32 +1232,10 @@ if command -v bat >/dev/null 2>&1 || command -v batcat >/dev/null 2>&1; then
     else
         alias taildmesg='dmesg -w'
     fi
-    alias flog='fzf-log-tail'          # 交互式日志选择
-    alias fmlogs='fzf-multi-log-tail'  # 多日志监控
-    alias flevel='fzf-log-level'       # 日志级别过滤
-fi
 
-# =============================================================================
-# man + bat 集成：彩色 man 页面
-# =============================================================================
-
-if command -v bat >/dev/null 2>&1 || command -v batcat >/dev/null 2>&1; then
-    # 设置 MANPAGER 使用 bat 作为 man 页面的分页器 - 修复兼容性
-    if command -v batcat >/dev/null 2>&1; then
-        export MANPAGER="sh -c 'col -bx | batcat -l man -p'"
-    elif command -v bat >/dev/null 2>&1; then
-        export MANPAGER="sh -c 'col -bx | bat -l man -p'"
-    fi
-
-    # 基于fzf-basic-example.md的高级man页面功能
     if command -v fzf >/dev/null 2>&1; then
-        # 简单的man页面搜索 - 基于basic example
-        fman() {
-            man -k . | fzf -q "$1" --prompt='man> ' --preview 'echo {} | tr -d "()" | awk "{printf \"%s \", \$2} {print \$1}" | xargs -r man' | tr -d '()' | awk '{printf "%s ", $2} {print $1}' | xargs -r man
-        }
-
-        # 高级man页面widget - 修复搜索和主题问题
-        fzf-man-widget() {
+        # 交互式日志文件选择和监控
+        fzf-log-tail() {
             # 确保bat命令可用
             local bat_cmd
             if command -v batcat >/dev/null 2>&1; then
@@ -1165,31 +1247,95 @@ if command -v bat >/dev/null 2>&1 || command -v batcat >/dev/null 2>&1; then
                 return 1
             fi
 
-            # 修复：使用有效的bat主题和简化的预览命令
-            local preview_cmd="echo {} | awk '{print \$1}' | xargs -r man 2>/dev/null | col -bx | $bat_cmd --language=man --plain --color=always --theme=OneHalfDark"
+            local log_dirs=("/var/log" "/var/log/nginx" "/var/log/apache2" "$HOME/.local/share/logs")
+            local log_files
 
-            # 修复：简化man页面解析
-            man -k . 2>/dev/null | sort | \
-            awk -v cyan=\$(tput setaf 6) -v blue=\$(tput setaf 4) -v res=\$(tput sgr0) -v bld=\$(tput bold) '{ \$1=cyan bld \$1; \$2=res blue \$2; } 1' | \
+            # 收集所有日志文件
+            log_files=$(find "${log_dirs[@]}" -name "*.log" -o -name "syslog*" -o -name "auth.log*" -o -name "kern.log*" 2>/dev/null | sort)
+
+            if [[ -z "$log_files" ]]; then
+                echo "未找到日志文件"
+                return 1
+            fi
+
+            echo "$log_files" |
+            fzf --preview "tail -50 {} | $bat_cmd --color=always -l log" \
+                --preview-window 'right:60%:wrap' \
+                --header 'CTRL-T: Tail -f | CTRL-L: Less | Enter: View last 100 lines' \
+                --bind "ctrl-t:execute(tail -f {} | $bat_cmd --paging=never -l log)" \
+                --bind "ctrl-l:execute($bat_cmd --paging=always -l log {})" \
+                --bind "enter:execute(tail -100 {} | $bat_cmd --paging=always -l log)"
+        }
+
+        alias flog='fzf-log-tail'          # 交互式日志选择
+    fi
+fi
+'''
+
+def generate_man_integration_module() -> str:
+    """生成man页面集成模块（修复batman搜索功能）"""
+    return '''# man页面集成（修复batman搜索功能）
+
+if command -v bat >/dev/null 2>&1 || command -v batcat >/dev/null 2>&1; then
+    # 设置 MANPAGER 使用 bat 作为 man 页面的分页器 - 修复兼容性
+    if command -v batcat >/dev/null 2>&1; then
+        export MANPAGER="sh -c 'col -bx | batcat -l man -p'"
+    elif command -v bat >/dev/null 2>&1; then
+        export MANPAGER="sh -c 'col -bx | bat -l man -p'"
+    fi
+
+    # 基于fzf-basic-example.md的高级man页面功能
+    # 简单的man页面搜索 - 基于basic example
+    fman() {
+        if command -v fzf >/dev/null 2>&1; then
+            man -k . | fzf -q "$1" --prompt='man> ' --preview 'echo {} | tr -d "()" | awk "{printf \"%s \", \$2} {print \$1}" | xargs -r man' | tr -d '()' | awk '{printf "%s ", $2} {print $1}' | xargs -r man
+        else
+            echo "用法: fman <关键词>"
+            echo "需要安装 fzf 来使用此功能"
+            apropos "$@"
+        fi
+    }
+
+    # 高级man页面widget - 修复搜索和主题问题
+    batman() {
+        if command -v fzf >/dev/null 2>&1; then
+            # 确保bat命令可用
+            local bat_cmd
+            if command -v batcat >/dev/null 2>&1; then
+                bat_cmd='batcat'
+            elif command -v bat >/dev/null 2>&1; then
+                bat_cmd='bat'
+            else
+                echo "错误：未找到bat工具，请先安装"
+                return 1
+            fi
+
+            # 修复：简化预览命令，避免复杂的转义和语法错误
+            # 修复：使用更简单的man页面解析
+            man -k . 2>/dev/null | \
+            awk '{
+                # 提取命令名（去掉括号内容）
+                cmd = $1
+                gsub(/\([^)]*\)/, "", cmd)
+                # 提取描述
+                desc = ""
+                for(i=2; i<=NF; i++) desc = desc " " $i
+                printf "%-20s %s\n", cmd, desc
+            }' | \
+            sort | \
             fzf \
-                -q "\$1" \
+                --query="$1" \
                 --ansi \
                 --tiebreak=begin \
                 --prompt=' Man > ' \
                 --preview-window '50%,rounded,<50(up,85%,border-bottom)' \
-                --preview "\$preview_cmd" \
+                --preview "echo {} | awk '{print \$1}' | xargs -I {} sh -c 'man {} 2>/dev/null | col -bx | $bat_cmd --language=man --plain --color=always --theme=OneHalfDark || echo \"Manual not found for {}\"'" \
                 --bind "enter:execute(echo {} | awk '{print \$1}' | xargs -r man)" \
-                --bind "alt-c:+change-preview(echo {} | awk '{print \$1}' | xargs -I {} curl -s cht.sh/{} 2>/dev/null || echo 'cheat.sh not available')+change-prompt(' Cheat > ')" \
-                --bind "alt-m:+change-preview(\$preview_cmd)+change-prompt(' Man > ')" \
-                --bind "alt-t:+change-preview(echo {} | awk '{print \$1}' | xargs -r tldr --color=always 2>/dev/null || echo 'tldr not available')+change-prompt(' TLDR > ')"
-        }
-
-        # 别名 - 使用高级版本替换简单版本
-        alias batman='fzf-man-widget'
-        alias man-search='fman'
-    else
-        # 降级到简单版本（如果没有fzf）
-        batman() {
+                --bind "alt-c:+change-preview(echo {} | awk '{print \$1}' | xargs -I {} sh -c 'curl -s cht.sh/{} 2>/dev/null || echo \"cheat.sh not available for {}\"')+change-prompt(' Cheat > ')" \
+                --bind "alt-t:+change-preview(echo {} | awk '{print \$1}' | xargs -I {} sh -c 'tldr --color=always {} 2>/dev/null || echo \"tldr not available for {}\"')+change-prompt(' TLDR > ')" \
+                --header 'ENTER: Open man page | ALT-C: Cheat.sh | ALT-T: TLDR'
+        else
+            # 降级到简单版本（如果没有fzf）
             if [[ $# -eq 0 ]]; then
                 echo "用法: batman <命令名>"
                 return 1
@@ -1203,90 +1349,27 @@ if command -v bat >/dev/null 2>&1 || command -v batcat >/dev/null 2>&1; then
             else
                 man "$@"
             fi
-        }
+        fi
+    }
 
-        man-search() {
-            if [[ $# -eq 0 ]]; then
-                echo "用法: man-search <关键词>"
-                return 1
-            fi
-            apropos "$@"
-        }
-    fi
-fi
-
-# =============================================================================
-# xclip 集成：复制工具集成
-# =============================================================================
-
-if command -v xclip >/dev/null 2>&1 && (command -v bat >/dev/null 2>&1 || command -v batcat >/dev/null 2>&1); then
-    # 复制文件内容到剪贴板（纯文本）
-    batcopy() {
+    # man页面搜索函数
+    man-search() {
         if [[ $# -eq 0 ]]; then
-            echo "用法: batcopy <文件>"
+            echo "用法: man-search <关键词>"
             return 1
         fi
-
-        # 使用动态检测的bat命令
-        if command -v batcat >/dev/null 2>&1; then
-            batcat --plain "$1" | xclip -selection clipboard
-        elif command -v bat >/dev/null 2>&1; then
-            bat --plain "$1" | xclip -selection clipboard
+        if command -v fzf >/dev/null 2>&1; then
+            fman "$@"
         else
-            cat "$1" | xclip -selection clipboard
-        fi
-        echo "文件内容已复制到剪贴板"
-    }
-
-    # 从剪贴板粘贴并用 bat 显示
-    batpaste() {
-        # 使用动态检测的bat命令
-        if command -v batcat >/dev/null 2>&1; then
-            xclip -selection clipboard -o | batcat --language="${1:-txt}"
-        elif command -v bat >/dev/null 2>&1; then
-            xclip -selection clipboard -o | bat --language="${1:-txt}"
-        else
-            xclip -selection clipboard -o
+            apropos "$@"
         fi
     }
 fi
+'''
 
-# =============================================================================
-# btop (系统监控工具) 配置
-# =============================================================================
-
-if command -v btop >/dev/null 2>&1; then
-    alias top='btop'
-    alias htop='btop'
-fi
-
-# =============================================================================
-# 网络工具别名
-# =============================================================================
-
-# 网络诊断工具的便捷别名
-if command -v mtr >/dev/null 2>&1; then
-    alias mtr='mtr --show-ips'
-fi
-
-if command -v nmap >/dev/null 2>&1; then
-    # 快速端口扫描
-    alias nmap-quick='nmap -T4 -F'
-    # 详细扫描
-    alias nmap-detail='nmap -T4 -A -v'
-fi
-
-# =============================================================================
-# 磁盘使用分析
-# =============================================================================
-
-if command -v ncdu >/dev/null 2>&1; then
-    alias du='ncdu'
-fi
-
-# =============================================================================
-# APT + fzf 集成：交互式软件包管理
-# =============================================================================
+def generate_apt_integration_module() -> str:
+    """生成APT集成模块"""
+    return '''# APT包管理集成功能
 
 if command -v apt-cache >/dev/null 2>&1 && command -v fzf >/dev/null 2>&1 && command -v xargs >/dev/null 2>&1; then
     # 交互式APT软件包搜索和安装 - 主要功能
@@ -1342,31 +1425,16 @@ if command -v apt-cache >/dev/null 2>&1 && command -v fzf >/dev/null 2>&1 && com
         apt-cache show "$1" | "$bat_cmd" -l yaml --paging=always
     }
 
-    # APT软件包依赖查看
-    apt-deps() {
-        if [[ $# -eq 0 ]]; then
-            echo "用法: apt-deps <软件包名>"
-            echo "功能: 查看软件包依赖关系"
-            return 1
-        fi
-
-        apt-cache depends "$1" | grep -E "^\s*(Depends|Recommends|Suggests):" |
-        sed 's/^[[:space:]]*//' |
-        fzf --preview "apt-cache show {2}" \
-            --preview-window=right:60%:wrap \
-            --header "依赖关系: $1"
-    }
-
     # APT别名
     alias as='apt-search'        # APT搜索
     alias ai='apt-installed'     # 已安装软件包
     alias ainfo='apt-info'       # 软件包信息
-    alias adeps='apt-deps'       # 依赖关系
 fi
+'''
 
-# =============================================================================
-# 高级工具组合和实用函数
-# =============================================================================
+def generate_utility_functions_module() -> str:
+    """生成通用工具函数模块"""
+    return '''# 通用工具函数（search-all等）
 
 # 综合搜索函数：结合 fd、rg、fzf、bat
 search-all() {
@@ -1391,13 +1459,23 @@ search-all() {
     local path="${2:-.}"
 
     echo "==> 搜索文件名包含 '$pattern' 的文件 <=="
-    if command -v fd >/dev/null 2>&1; then
-        fd "$pattern" "$path" --type f -x "$bat_cmd" --color=always --style=header --line-range=:10
+    # 检查fd或fdfind是否可用，优先使用fd（可能是别名）
+    if command -v fd >/dev/null 2>&1 || command -v fdfind >/dev/null 2>&1; then
+        # 尝试使用fd，如果失败则使用fdfind
+        if ! fd "$pattern" "$path" --type f -x "$bat_cmd" --color=always --style=header --line-range=:10 2>/dev/null; then
+            if command -v fdfind >/dev/null 2>&1; then
+                fdfind "$pattern" "$path" --type f -x "$bat_cmd" --color=always --style=header --line-range=:10
+            fi
+        fi
+    else
+        echo "提示：未找到fd工具，跳过文件名搜索"
     fi
 
     echo -e "\n==> 搜索文件内容包含 '$pattern' 的文件 <=="
     if command -v rg >/dev/null 2>&1; then
         rg --color=always --line-number --no-heading "$pattern" "$path" | head -20
+    else
+        echo "提示：未找到ripgrep工具，跳过文件内容搜索"
     fi
 }
 
@@ -1413,17 +1491,6 @@ project-analyze() {
         fd --type f . "$dir" | sed 's/.*\.//' | sort | uniq -c | sort -nr | head -10
     fi
 
-    # 代码行数统计
-    if command -v rg >/dev/null 2>&1; then
-        echo -e "\n代码行数统计:"
-        rg --type-list | grep -E '\.(py|js|ts|go|rs|java|cpp|c|h)' | head -5 | while read -r type; do
-            local ext=$(echo "$type" | cut -d: -f1)
-            local count=$(fd "\.$ext$" "$dir" --type f | wc -l)
-            local lines=$(fd "\.$ext$" "$dir" --type f -x wc -l | awk '{sum+=$1} END {print sum}')
-            echo "$ext: $count 文件, $lines 行"
-        done
-    fi
-
     # 最大的文件
     echo -e "\n最大的文件:"
     find "$dir" -type f -exec ls -lh {} + | sort -k5 -hr | head -5 | awk '{print $9 ": " $5}'
@@ -1435,83 +1502,50 @@ find-large-files() {
     local path="${2:-.}"
 
     echo "查找大于 $size 的文件..."
-    if command -v fd >/dev/null 2>&1; then
-        fd --type f --size "+$size" . "$path" -x ls -lh {} | awk '{print $9 ": " $5}'
-    else
-        find "$path" -type f -size "+$size" -exec ls -lh {} \; | awk '{print $9 ": " $5}'
-    fi
+    find "$path" -type f -size +$size -exec ls -lh {} + | sort -k5 -hr
 }
 
-# 快速查找最近修改的文件（增强版）
+# 查找最近修改的文件
 find-recent() {
     local days=${1:-7}
     local path="${2:-.}"
 
     echo "查找最近 $days 天修改的文件..."
-    if command -v fd >/dev/null 2>&1 && command -v bat >/dev/null 2>&1; then
-        fd --type f --changed-within "${days}d" . "$path" -x ls -lt {} | head -20
-    else
-        find "$path" -type f -mtime -"$days" -exec ls -lt {} \; | head -20
-    fi
+    find "$path" -type f -mtime -$days -exec ls -lht {} + | head -20
 }
 
-# 端口占用检查（增强版）
+# 端口占用检查
 port-check() {
-    local port=$1
-    if [[ -z "$port" ]]; then
-        echo "用法: port-check <端口号>"
-        return 1
-    fi
-
+    local port=${1:-80}
     echo "检查端口 $port 的占用情况..."
 
     if command -v ss >/dev/null 2>&1; then
-        ss -tlnp | grep ":$port "
+        ss -tulpn | grep ":$port"
     elif command -v netstat >/dev/null 2>&1; then
-        netstat -tlnp | grep ":$port "
+        netstat -tulpn | grep ":$port"
     else
-        echo "需要安装 net-tools 或 iproute2"
-        return 1
+        echo "需要安装 ss 或 netstat 工具"
     fi
 }
 
-# 快速HTTP服务器（增强版）
-serve() {
-    local port=${1:-8000}
-    local dir="${2:-.}"
-
-    echo "在目录 '$dir' 启动HTTP服务器..."
-    echo "端口: $port"
-    echo "访问: http://localhost:$port"
-    echo "按 Ctrl+C 停止服务器"
-
-    cd "$dir" && python3 -m http.server "$port"
-}
-
-# 系统信息快速查看
+# 系统信息概览
 sysinfo() {
-    echo "==> 系统信息 <=="
+    echo "=== 系统信息概览 ==="
     echo "主机名: $(hostname)"
-    echo "系统: $(uname -s -r)"
-    echo "架构: $(uname -m)"
-
-    if command -v lsb_release >/dev/null 2>&1; then
-        echo "发行版: $(lsb_release -d | cut -f2)"
-    fi
-
-    echo -e "\n==> 资源使用 <=="
-    echo "内存使用: $(free -h | awk 'NR==2{printf "%.1f%%", $3*100/$2 }')"
-    echo "磁盘使用: $(df -h / | awk 'NR==2{print $5}')"
-
-    if command -v btop >/dev/null 2>&1; then
-        echo -e "\n提示: 运行 'btop' 查看详细系统监控"
-    fi
+    echo "内核: $(uname -r)"
+    echo "发行版: $(lsb_release -d 2>/dev/null | cut -f2 || echo 'Unknown')"
+    echo "CPU: $(nproc) 核心"
+    echo "内存: $(free -h | awk '/^Mem:/ {print $2}')"
+    echo "磁盘: $(df -h / | awk 'NR==2 {print $2 " (已用 " $3 ")"}')"
+    echo "负载: $(uptime | awk -F'load average:' '{print $2}')"
 }
+'''
 
-# =============================================================================
+def generate_aliases_summary_module() -> str:
+    """生成别名汇总和show-tools功能模块"""
+    return '''# 最终别名汇总和show-tools功能
+
 # 综合别名和快捷键配置
-# =============================================================================
-
 # 文件和目录操作增强
 alias ll='ls -alF --color=auto'
 alias la='ls -A --color=auto'
@@ -1557,16 +1591,34 @@ alias zshrc='${EDITOR:-vim} ~/.zshrc'
 alias vimrc='${EDITOR:-vim} ~/.vimrc'
 alias bashrc='${EDITOR:-vim} ~/.bashrc'
 
-# =============================================================================
-# 工具组合快捷键和提示信息
-# =============================================================================
+# 系统工具别名
+if command -v btop >/dev/null 2>&1; then
+    alias top='btop'
+    alias htop='btop'
+fi
+
+if command -v ncdu >/dev/null 2>&1; then
+    alias du='ncdu'
+fi
+
+# 网络工具别名
+if command -v mtr >/dev/null 2>&1; then
+    alias mtr='mtr --show-ips'
+fi
+
+if command -v nmap >/dev/null 2>&1; then
+    # 快速端口扫描
+    alias nmap-quick='nmap -T4 -F'
+    # 详细扫描
+    alias nmap-detail='nmap -T4 -A -v'
+fi
 
 # 显示可用的工具组合命令 - 基于ADVANCED.md的全面功能
 show-tools() {
-    echo "==> 🚀 现代命令行工具组合 - 基于fzf ADVANCED.md全面实现 <=="
+    echo "==> 🚀 Shell Tools 模块化配置系统 v2.0 <=="
     echo
     echo "📁 文件搜索和预览:"
-    echo "  fe          - 交互式文件编辑（基于basic example）"
+    echo "  fe          - 交互式文件编辑"
     echo "  fo          - 用默认应用打开文件"
     echo "  vf          - 交互式文件查看（bat预览）"
     echo "  fcd         - fzf + fd: 搜索并切换目录"
@@ -1574,45 +1626,31 @@ show-tools() {
     echo "  fc          - fzf + rg: 搜索文件内容"
     echo "  fthemes     - fzf + bat: 预览 bat 主题"
     echo
-    echo "📂 目录导航增强（基于basic example）:"
+    echo "📂 目录导航增强:"
     echo "  fdir        - 基础目录切换"
     echo "  fdira       - 包含隐藏目录的切换"
     echo "  fdirt       - 树形预览目录切换"
     echo
-    echo "🔄 动态重载和模式切换 (基于ADVANCED.md):"
+    echo "🔄 动态重载和模式切换:"
     echo "  fps         - fzf动态进程管理 (CTRL-R重载)"
     echo "  ffd         - 文件/目录动态切换 (CTRL-D/CTRL-F)"
     echo "  ftm         - 单键模式切换 (CTRL-T)"
     echo "  fzf-popup   - tmux popup模式 (需要tmux 3.3+)"
-    echo "  fzf-side    - tmux侧边栏模式"
     echo
-    echo "� 历史命令和进程管理（基于basic example）:"
-    echo "  fh          - 历史命令搜索和重复执行"
-    echo "  fkill       - 交互式进程终止"
-    echo "  fif         - 文件内容搜索（find in files）"
-    echo "  vg          - 搜索内容并编辑（vim grep）"
-    echo
-    echo "�🔍 高级Ripgrep集成 (基于ADVANCED.md):"
+    echo "🔍 高级搜索功能:"
     echo "  rfv         - Ripgrep + fzf二级过滤"
     echo "  rgi         - 交互式Ripgrep启动器"
-    echo "  rg2         - 双阶段搜索 (ALT-Enter切换)"
-    echo "  rgs         - Ripgrep/fzf模式切换 (CTRL-R/CTRL-F)"
-    echo "  batgrep     - 传统rg + bat搜索"
-    echo "  rg-fzf      - rg + fzf + bat交互式搜索"
+    echo "  rg2         - 双阶段搜索 (ALT-ENTER切换)"
+    echo "  batgrep     - Ripgrep + bat集成搜索"
+    echo "  rg-fzf      - 搜索后选择文件查看"
     echo
-    echo "🌿 Git对象交互 (基于ADVANCED.md):"
-    echo "  gst         - Git状态交互 (CTRL-A添加/CTRL-R重置)"
-    echo "  gbr         - Git分支交互 (CTRL-O切换/CTRL-D删除)"
-    echo "  gco         - Git提交交互 (CTRL-S显示/CTRL-D对比)"
-    echo "  gtg         - Git标签交互 (CTRL-O切换/CTRL-D删除)"
-    echo "  gshow       - git + bat: 查看历史版本文件"
-    echo "  gdiff       - git + bat: 增强的diff查看"
-    echo "  glog        - git + fzf + bat: 交互式log查看"
+    echo "📖 Man页面和文档:"
+    echo "  batman      - fzf + bat: 交互式man页面浏览"
+    echo "  fman        - fzf: man页面搜索"
+    echo "  man-search  - man + fzf: 搜索man页面"
     echo
-    echo "📊 高级日志监控 (基于ADVANCED.md):"
+    echo "📊 日志监控:"
     echo "  flog        - 交互式日志文件选择"
-    echo "  fmlogs      - 多日志文件并行监控"
-    echo "  flevel      - 日志级别过滤监控"
     echo "  tailbat     - tail + bat: 实时日志监控"
     echo "  tailsys     - 系统日志监控"
     echo "  tailauth    - 认证日志监控"
@@ -1625,94 +1663,82 @@ show-tools() {
     echo "  port        - 端口占用检查"
     echo "  info        - 系统信息概览"
     echo
-    echo "� APT软件包管理 (Ubuntu/Debian):"
+    echo "📦 APT软件包管理 (Ubuntu/Debian):"
     echo "  af          - 交互式搜索和安装APT软件包"
     echo "  as          - APT软件包搜索（不安装）"
-    echo "  ai          - 查看已安装的软件包"
-    echo "  ainfo       - 查看软件包详细信息"
-    echo "  adeps       - 查看软件包依赖关系"
+    echo "  ai          - 已安装软件包管理"
+    echo "  ainfo       - 软件包详细信息"
     echo
-    echo "�📋 复制和粘贴:"
-    echo "  batcopy     - bat + xclip: 复制文件内容"
-    echo "  batpaste    - xclip + bat: 粘贴并高亮显示"
+    echo "🔧 调试和管理:"
+    echo "  shell-tools-debug   - 详细调试信息"
+    echo "  shell-tools-status  - 模块加载状态"
+    echo "  shell-tools-reload  - 重新加载所有模块"
     echo
-    echo "📖 手册和帮助:"
-    echo "  batman      - man + bat: 彩色man页面"
-    echo "  man-search  - man + fzf: 搜索man页面"
-    echo
-    echo "⌨️  高级键绑定 (在fzf中可用):"
-    echo "  CTRL-/      - 切换预览窗口"
-    echo "  CTRL-U/D    - 预览窗口上下翻页"
-    echo "  ALT-UP/DOWN - 预览内容上下滚动"
-    echo "  CTRL-A/X    - 全选/取消全选"
-    echo "  CTRL-T      - 切换选择"
-    echo "  CTRL-S      - 切换排序"
-    echo "  CTRL-R      - 重载数据"
-    echo
-    echo "🎨 tmux集成功能:"
-    echo "  tm          - tmux会话管理（基于basic example）"
-    echo "  fs          - tmux会话切换"
-    echo "  ftpane      - tmux窗格切换"
-    echo "  fzf-tmux-center  - 中央popup (需要tmux 3.3+)"
-    echo "  fzf-tmux-right   - 右侧popup"
-    echo "  fzf-tmux-bottom  - 底部popup"
-    echo "  fzf-tmux-top     - 顶部popup"
-    echo
-    echo "💡 提示: 运行 'show-tools' 随时查看此帮助信息"
+    echo "💡 提示: 所有功能基于模块化设计，可独立加载和调试"
     echo "📚 基于官方fzf ADVANCED.md文档实现的全面功能集"
 }
-
-# 首次加载时显示提示
-if [[ -z "$SHELL_TOOLS_LOADED" ]]; then
-    export SHELL_TOOLS_LOADED=1
-    echo "🚀 现代命令行工具已加载！基于fzf ADVANCED.md全面实现"
-    echo "💡 运行 'show-tools' 查看所有可用的高级功能"
-    echo "📚 包含动态重载、模式切换、Git集成、日志监控等高级特性"
-fi
 '''
 
-    try:
-        with open(config_path, 'w') as f:
-            f.write(config_content)
+def handle_legacy_config():
+    """处理旧版配置文件的迁移"""
+    if OLD_CONFIG_FILE.exists():
+        log_warn(f"检测到旧版配置文件: {OLD_CONFIG_FILE}")
+        log_info("新版本使用模块化配置，旧文件将被备份")
 
-        log_success(f"Shell工具配置文件已生成: {config_path}")
-        return True
+        # 备份旧文件
+        backup_file = OLD_CONFIG_FILE.with_suffix('.zsh.backup')
+        try:
+            OLD_CONFIG_FILE.rename(backup_file)
+            log_success(f"旧配置文件已备份到: {backup_file}")
+        except Exception as e:
+            log_warn(f"备份旧配置文件失败: {str(e)}")
 
-    except Exception as e:
-        log_error(f"生成Shell工具配置文件失败: {str(e)}")
-        return False
+    return True
 
-def update_zshrc_for_shell_tools():
-    """
-    更新.zshrc文件以引用Shell工具配置
-
-    Returns:
-        bool: 更新是否成功
-    """
+def update_zshrc_for_modular_config():
+    """更新.zshrc文件以使用模块化配置"""
     zshrc_path = Path.home() / ".zshrc"
-    config_source_line = "# Shell Tools Configuration - Auto-generated by shell-tools-config-generator.py"
-    source_line = "[[ -f ~/.shell-tools-config.zsh ]] && source ~/.shell-tools-config.zsh"
+
+    # 新的配置行
+    new_config_lines = [
+        "# Shell Tools Modular Configuration - Auto-generated by shell-tools-config-generator.py v2.0",
+        "[[ -f ~/.oh-my-zsh/custom/shell-tools-main.zsh ]] && source ~/.oh-my-zsh/custom/shell-tools-main.zsh"
+    ]
+
+    # 旧的配置行（需要移除）
+    old_config_patterns = [
+        "# Shell Tools Configuration - Auto-generated by shell-tools-config-generator.py",
+        "[[ -f ~/.shell-tools-config.zsh ]] && source ~/.shell-tools-config.zsh"
+    ]
 
     if not zshrc_path.exists():
         log_warn(".zshrc文件不存在，创建新文件")
         with open(zshrc_path, 'w') as f:
-            f.write(f"{config_source_line}\n{source_line}\n")
+            f.write('\n'.join(new_config_lines) + '\n')
         return True
 
     try:
+        # 读取现有内容
         with open(zshrc_path, 'r') as f:
-            content = f.read()
+            lines = f.readlines()
 
-        # 检查是否已经包含Shell工具配置引用
-        if source_line in content:
-            log_info("Shell工具配置引用已存在于.zshrc中")
-            return True
+        # 移除旧的配置行
+        lines = [line for line in lines if not any(pattern in line for pattern in old_config_patterns)]
 
-        # 添加Shell工具配置引用
-        with open(zshrc_path, 'a') as f:
-            f.write(f"\n{config_source_line}\n{source_line}\n")
+        # 检查是否已经有新的配置
+        has_new_config = any(new_config_lines[1] in line for line in lines)
 
-        log_success("已更新.zshrc文件以引用Shell工具配置")
+        if not has_new_config:
+            # 添加新的配置行
+            lines.extend([line + '\n' for line in new_config_lines])
+
+            with open(zshrc_path, 'w') as f:
+                f.writelines(lines)
+
+            log_success("已更新.zshrc文件以使用模块化配置")
+        else:
+            log_info("Shell工具模块化配置引用已存在于.zshrc中")
+
         return True
 
     except Exception as e:
@@ -1720,23 +1746,29 @@ def update_zshrc_for_shell_tools():
         return False
 
 def main():
-    """主函数"""
-    show_header("Shell工具配置生成器", "1.0", "生成fd、fzf等现代shell工具的最佳实践配置")
+    """主函数 - 模块化版本"""
+    show_header("Shell工具配置生成器", "2.0", "生成模块化的现代shell工具最佳实践配置")
 
-    log_info("开始生成Shell工具配置...")
+    log_info("开始生成Shell工具模块化配置...")
 
-    # 生成Shell工具配置文件
+    # 处理旧版配置文件
+    if not handle_legacy_config():
+        log_error("处理旧版配置失败")
+        return False
+
+    # 生成模块化配置文件
     if not generate_shell_tools_config():
         log_error("Shell工具配置文件生成失败")
         return False
 
     # 更新.zshrc文件
-    if not update_zshrc_for_shell_tools():
+    if not update_zshrc_for_modular_config():
         log_error(".zshrc文件更新失败")
         return False
 
-    log_success("Shell工具配置生成完成！")
+    log_success("Shell工具模块化配置生成完成！")
     log_info("请运行 'source ~/.zshrc' 或重新启动终端以应用配置")
+    log_info("运行 'shell-tools-debug' 查看模块加载状态")
 
     return True
 
