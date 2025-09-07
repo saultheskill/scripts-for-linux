@@ -172,31 +172,61 @@ def install_package_with_progress(package_name: str, package_desc: str,
                                      stderr=error_log, text=True, bufsize=1,
                                      universal_newlines=True)
 
+            # 跟踪已显示的状态，避免重复输出
+            shown_states = {
+                'reading': False,
+                'building': False,
+                'preparing': False,
+                'downloading': False,
+                'unpacking': False,
+                'configuring': False,
+                'triggers': False
+            }
+
+            download_count = 0
+            unpack_count = 0
+            config_count = 0
+            trigger_count = 0
+
             # 实时显示输出
             for line in process.stdout:
                 line = line.strip()
-                if "Reading package lists" in line:
+                if "Reading package lists" in line and not shown_states['reading']:
                     print(f"  {CYAN}[INFO]{RESET} 读取软件包列表...")
-                elif "Building dependency tree" in line:
+                    shown_states['reading'] = True
+                elif "Building dependency tree" in line and not shown_states['building']:
                     print(f"  {CYAN}[INFO]{RESET} 分析依赖关系...")
-                elif "The following NEW packages will be installed" in line:
+                    shown_states['building'] = True
+                elif "The following NEW packages will be installed" in line and not shown_states['preparing']:
                     print(f"  {CYAN}[INFO]{RESET} 准备安装新软件包...")
-                elif "Need to get" in line:
+                    shown_states['preparing'] = True
+                elif "Need to get" in line and not shown_states['downloading']:
                     import re
                     size_match = re.search(r'[\d,.]+ [kMG]B', line)
                     size = size_match.group() if size_match else "未知大小"
                     print(f"  {CYAN}↓{RESET} 需要下载: {size}")
+                    shown_states['downloading'] = True
                 elif "Get:" in line:
-                    parts = line.split()
-                    if len(parts) > 1:
-                        url = parts[1]
-                        print(f"  {CYAN}↓{RESET} 下载中: {os.path.basename(url)}")
+                    download_count += 1
+                    if download_count <= 3:  # 只显示前3个下载项
+                        parts = line.split()
+                        if len(parts) > 1:
+                            url = parts[1]
+                            print(f"  {CYAN}↓{RESET} 下载中: {os.path.basename(url)}")
+                    elif download_count == 4:
+                        print(f"  {CYAN}↓{RESET} 继续下载其他包...")
                 elif "Unpacking" in line:
-                    print(f"  {CYAN}[INFO]{RESET} 解包中...")
+                    unpack_count += 1
+                    if unpack_count == 1:
+                        print(f"  {CYAN}[INFO]{RESET} 解包中...")
                 elif "Setting up" in line:
-                    print(f"  {CYAN}[INFO]{RESET} 配置中...")
+                    config_count += 1
+                    if config_count == 1:
+                        print(f"  {CYAN}[INFO]{RESET} 配置中...")
                 elif "Processing triggers" in line:
-                    print(f"  {CYAN}[INFO]{RESET} 处理触发器...")
+                    trigger_count += 1
+                    if trigger_count == 1:
+                        print(f"  {CYAN}[INFO]{RESET} 处理触发器...")
 
             process.wait()
 
@@ -338,6 +368,8 @@ def install_common_software() -> bool:
         ("vim", "文本编辑器"),
         ("htop", "系统监控工具"),
         ("unzip", "解压缩工具"),
+        ("tmux", "终端工具"),
+        ("thefuck", "改错工具"),
         ("zip", "压缩工具")
     ]
 
