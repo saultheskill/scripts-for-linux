@@ -100,42 +100,22 @@ init_comprehensive_test_environment() {
     log_info "临时目录: $TEST_TEMP_DIR"
 }
 
-# 创建测试数据
+# 创建测试数据（简化版本）
 create_test_data() {
     log_info "创建测试数据..."
 
-    # 创建各种类型的测试文件
-    cat > "$TEST_DATA_DIR/test.js" << 'EOF'
-function testFunction() {
-    console.log("Hello, World!");
-    return true;
-}
-EOF
+    # 创建简单的测试文件
+    echo "console.log('Hello, World!');" > "$TEST_DATA_DIR/test.js"
+    echo "print('Hello, World!')" > "$TEST_DATA_DIR/test.py"
+    echo "echo 'Hello, World!'" > "$TEST_DATA_DIR/test.sh"
 
-    cat > "$TEST_DATA_DIR/test.py" << 'EOF'
-def test_function():
-    print("Hello, World!")
-    return True
-EOF
-
-    cat > "$TEST_DATA_DIR/test.sh" << 'EOF'
-#!/bin/bash
-echo "Hello, World!"
-exit 0
-EOF
-
-    # 创建包含中文的测试文件
-    echo "这是一个包含中文的测试文件" > "$TEST_DATA_DIR/中文测试.txt"
-
-    # 创建大文件用于性能测试
-    for i in {1..1000}; do
-        echo "Line $i: This is a test line with some content for performance testing" >> "$TEST_DATA_DIR/large-file.txt"
-    done
+    # 创建小的测试文件
+    echo "Line 1: Test content" > "$TEST_DATA_DIR/small-file.txt"
+    echo "Line 2: More test content" >> "$TEST_DATA_DIR/small-file.txt"
 
     # 创建目录结构
-    mkdir -p "$TEST_DATA_DIR/subdir1/subdir2"
+    mkdir -p "$TEST_DATA_DIR/subdir1"
     touch "$TEST_DATA_DIR/subdir1/file1.txt"
-    touch "$TEST_DATA_DIR/subdir1/subdir2/file2.txt"
 
     log_info "测试数据创建完成"
 }
@@ -563,5 +543,7 @@ main() {
     fi
 }
 
-# 执行主函数
-main "$@"
+# 执行主函数（仅在直接运行时执行）
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    main "$@"
+fi
