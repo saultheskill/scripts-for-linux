@@ -721,7 +721,8 @@ def interactive_select_menu(options: List[str], message: str, default_index: int
             """绘制美化菜单"""
             lines_count = 0
 
-            if show_header:
+            # 只在显示头部时显示message，且如果message为空则不显示
+            if show_header and message.strip():
                 print(message)
                 print()
                 lines_count += 2
@@ -736,11 +737,6 @@ def interactive_select_menu(options: List[str], message: str, default_index: int
                 # 计算实际打印的行数（考虑选项中的换行符）
                 option_lines = option.count('\n') + 1
                 lines_count += option_lines
-
-            # 添加底部分隔线
-            print()
-            print(f"{GRAY}{'─' * 78}{RESET}")
-            lines_count += 2
 
             return lines_count
 
@@ -769,7 +765,8 @@ def interactive_select_menu(options: List[str], message: str, default_index: int
                 return -1, ""
 
         # 显示最终选择结果
-        print(message)
+        if message.strip():
+            print(message)
         print(f"{GREEN}▶ {options[selected]}{RESET}")
         print()
 

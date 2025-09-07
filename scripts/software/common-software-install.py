@@ -185,6 +185,56 @@ def install_fd_find_special() -> bool:
         return False
 
 
+def install_tshark_special() -> bool:
+    """
+    特殊安装tshark工具，避免交互式界面
+
+    Returns:
+        bool: 安装是否成功
+    """
+    from common import log_info, log_success, log_error
+
+    # 检查是否已安装
+    try:
+        result = subprocess.run(['which', 'tshark'], capture_output=True, text=True)
+        if result.returncode == 0:
+            log_success("tshark 已安装，跳过")
+            return True
+    except:
+        pass
+
+    sudo_cmd = check_root()
+
+    try:
+        # 预配置debconf以避免交互式提示
+        log_info("配置tshark安装选项...")
+        debconf_cmd = f'echo "wireshark-common wireshark-common/install-setuid boolean true" | {sudo_cmd} debconf-set-selections'.strip()
+        result1 = subprocess.run(debconf_cmd, shell=True, capture_output=True, text=True)
+
+        if result1.returncode != 0:
+            log_error(f"debconf配置失败: {result1.stderr}")
+            # 继续安装，不中断流程
+
+        # 使用非交互式方式安装tshark
+        log_info("安装tshark...")
+        env = os.environ.copy()
+        env['DEBIAN_FRONTEND'] = 'noninteractive'
+
+        cmd = f"{sudo_cmd} apt install -y --no-install-recommends tshark".strip()
+        result2 = subprocess.run(cmd, shell=True, capture_output=True, text=True, env=env)
+
+        if result2.returncode != 0:
+            log_error(f"tshark安装失败: {result2.stderr}")
+            return False
+
+        log_success("tshark安装完成")
+        return True
+
+    except Exception as e:
+        log_error(f"tshark安装过程中发生错误: {str(e)}")
+        return False
+
+
 def install_thefuck_special() -> bool:
     """
     特殊安装thefuck工具
@@ -264,42 +314,70 @@ def install_package_with_progress(package_name: str, package_desc: str,
             # 实时显示输出
             for line in process.stdout:
                 line = line.strip()
+                # 跳过空行和进度条相关的行
+                if not line or line.startswith('\r') or '%' in line and '[' in line:
+                    continue
+
                 if "Reading package lists" in line and not shown_states['reading']:
                     print(f"  {CYAN}[INFO]{RESET} 读取软件包列表...")
+                    sys.stdout.flush()
                     shown_states['reading'] = True
                 elif "Building dependency tree" in line and not shown_states['building']:
                     print(f"  {CYAN}[INFO]{RESET} 分析依赖关系...")
+                    sys.stdout.flush()
                     shown_states['building'] = True
                 elif "The following NEW packages will be installed" in line and not shown_states['preparing']:
                     print(f"  {CYAN}[INFO]{RESET} 准备安装新软件包...")
+                    sys.stdout.flush()
                     shown_states['preparing'] = True
                 elif "Need to get" in line and not shown_states['downloading']:
                     import re
                     size_match = re.search(r'[\d,.]+ [kMG]B', line)
                     size = size_match.group() if size_match else "未知大小"
                     print(f"  {CYAN}↓{RESET} 需要下载: {size}")
+                    sys.stdout.flush()
                     shown_states['downloading'] = True
                 elif "Get:" in line:
                     download_count += 1
                     if download_count <= 3:  # 只显示前3个下载项
+                        # 解析Get行格式: Get:1 http://archive.ubuntu.com/ubuntu noble/main amd64 package_name amd64 version [size]
                         parts = line.split()
-                        if len(parts) > 1:
-                            url = parts[1]
-                            print(f"  {CYAN}↓{RESET} 下载中: {os.path.basename(url)}")
+                        if len(parts) >= 4:
+                            # 尝试从URL中提取包名，或者从parts中找到包名
+                            package_file = None
+                            for part in parts:
+                                if '.deb' in part or '_' in part:
+                                    package_file = part
+                                    break
+
+                            if not package_file and len(parts) >= 5:
+                                # 如果没找到.deb文件，尝试构造包名
+                                package_file = f"{parts[4]}"
+
+                            if package_file:
+                                print(f"  {CYAN}↓{RESET} 下载中: {package_file}")
+                                sys.stdout.flush()
+                            else:
+                                print(f"  {CYAN}↓{RESET} 下载软件包...")
+                                sys.stdout.flush()
                     elif download_count == 4:
                         print(f"  {CYAN}↓{RESET} 继续下载其他包...")
+                        sys.stdout.flush()
                 elif "Unpacking" in line:
                     unpack_count += 1
                     if unpack_count == 1:
                         print(f"  {CYAN}[INFO]{RESET} 解包中...")
+                        sys.stdout.flush()
                 elif "Setting up" in line:
                     config_count += 1
                     if config_count == 1:
                         print(f"  {CYAN}[INFO]{RESET} 配置中...")
+                        sys.stdout.flush()
                 elif "Processing triggers" in line:
                     trigger_count += 1
                     if trigger_count == 1:
                         print(f"  {CYAN}[INFO]{RESET} 处理触发器...")
+                        sys.stdout.flush()
 
             process.wait()
 
@@ -450,7 +528,7 @@ def install_common_software() -> bool:
         ("net-tools", "网络工具"),
         ("ncdu", "磁盘使用分析"),
         ("traceroute", "网络路由跟踪"),
-        ("netcat", "网络连接工具"),
+        ("netcat-traditional", "网络连接工具"),
         ("mtr", "网络诊断工具"),
         ("tshark", "网络包分析"),
         ("nmap", "网络扫描工具"),
@@ -532,6 +610,13 @@ def install_common_software() -> bool:
             elif package_name == "fd-find":
                 log_info(f"安装 ({current_num}/{total_count}): {package_desc} ({package_name})")
                 if install_fd_find_special():
+                    success_count += 1
+                else:
+                    failed_count += 1
+                    failed_packages.append((package_name, package_desc))
+            elif package_name == "tshark":
+                log_info(f"安装 ({current_num}/{total_count}): {package_desc} ({package_name})")
+                if install_tshark_special():
                     success_count += 1
                 else:
                     failed_count += 1

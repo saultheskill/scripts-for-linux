@@ -246,8 +246,8 @@ def show_main_menu() -> None:
     print()
 
     # 菜单说明
-    print(f"{YELLOW}┌─ 操作说明 ─────────────────────────────────────────────────────────────────┐{RESET}")
-    print(f"{YELLOW}│{RESET} {CYAN}↑↓{RESET} 方向键或 {CYAN}W/S{RESET} 键移动光标  {CYAN}Enter{RESET} 键确认选择  {CYAN}Ctrl+C{RESET} 退出程序 {YELLOW}│{RESET}")
+    print(f"{YELLOW}┌─ 操作说明 ──────────────────────────────────────────────────────────────────┐{RESET}")
+    print(f"{YELLOW}│{RESET} {CYAN}↑↓{RESET} 方向键或     {CYAN}W/S{RESET}键移动光标      {CYAN}Enter{RESET} 键确认选择      {CYAN}Ctrl+C{RESET} 退出程序    {YELLOW}│{RESET}")
     print(f"{YELLOW}└─────────────────────────────────────────────────────────────────────────────┘{RESET}")
     print()
 
@@ -396,7 +396,7 @@ def main() -> int:
             # 显示菜单并获取用户选择
             selection_index, selection_text = interactive_select_menu(
                 option_names,
-                f"{CYAN}请选择要执行的操作：{RESET}",
+                "",
                 0
             )
 
