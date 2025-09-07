@@ -552,11 +552,30 @@ def generate_ssh_key():
 
     # 获取密钥配置
     print(f"\n{CYAN}=== SSH密钥配置 ==={RESET}")
-    print(f"{CYAN}请输入RSA密钥的名称：{RESET}")
-    print("默认键入enter为id_rsa")
-    print("如果不是，请输入RSA密钥的名称：")
+    print(f"{CYAN}请输入SSH密钥的标识名称：{RESET}")
+    print("默认键入enter为默认密钥(id_rsa)")
+    print("如果要创建自定义密钥，请输入标识名称（如：server1, prod, dev等）：")
+    print(f"{YELLOW}注意：输入的名称将自动添加'id_rsa_'前缀以符合SSH命名规范{RESET}")
 
-    key_name = safe_input("", "id_rsa")
+    user_input = safe_input("", "")
+
+    # 处理密钥命名：确保符合SSH命名规范
+    if not user_input or user_input.strip() == "":
+        key_name = "id_rsa"  # 默认密钥
+        log_info("使用默认密钥名称: id_rsa")
+    else:
+        # 清理用户输入，移除可能的前缀
+        clean_input = user_input.strip()
+        if clean_input.startswith("id_rsa_"):
+            key_name = clean_input  # 用户已经包含前缀
+        else:
+            key_name = f"id_rsa_{clean_input}"  # 自动添加前缀
+        log_info(f"生成密钥名称: {key_name}")
+
+    # 验证密钥名称的有效性
+    if not key_name.replace("_", "").replace("-", "").isalnum():
+        log_error("密钥名称只能包含字母、数字、下划线和连字符")
+        return None
 
     # 获取注释信息
     default_comment = f"{os.getenv('USER')}@{socket.gethostname()}"
