@@ -30,7 +30,14 @@ if command -v bat >/dev/null 2>&1 || command -v batcat >/dev/null 2>&1; then
                     --preview="
                         cmd=\$(echo {} | awk '{print \$1}')
                         section=\$(echo {} | sed 's/.*(\([^)]*\)).*/\1/')
-                        man \$section \$cmd 2>/dev/null | col -bx | $bat_cmd --language=man --color=always --line-range=:30 2>/dev/null || echo '手册页不可用'
+
+                        echo '📖 '\$cmd'('\$section')'
+                        echo '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
+                        if man \$section \$cmd >/dev/null 2>&1; then
+                            man \$section \$cmd 2>/dev/null | col -bx | $bat_cmd --language=man --style=header --color=always --line-range=:25 --wrap=never 2>/dev/null
+                        else
+                            echo '❌ Manual page not available'
+                        fi
                     " \
                     --preview-window="right,50%" \
                     --bind="enter:execute(
@@ -112,13 +119,30 @@ if command -v bat >/dev/null 2>&1 || command -v batcat >/dev/null 2>&1; then
                     --preview="
                         cmd=\$(echo {} | awk '{print \$1}')
                         section=\$(echo {} | sed 's/.*(\([^)]*\)).*/\1/')
-                        echo '📖 Manual: '\$cmd'('\$section')'
-                        echo '📊 Section: '\$section
-                        echo '📝 Description:'
-                        echo {} | sed 's/^[^)]*) */  /'
+                        desc=\$(echo {} | sed 's/^[^)]*) *//')
+
+                        # 头部信息
+                        echo '╭─────────────────────────────────────────────────────────────╮'
+                        printf '│ 📖 %-55s  │\n' \"\$cmd(\$section)\"
+                        echo '├─────────────────────────────────────────────────────────────┤'
+                        printf '│ 📊 Section: %-47s │\n' \"\$section\"
+                        printf '│ 📝 Description: %-43s │\n' \"\$(echo \$desc | cut -c1-43)\"
+                        echo '╰─────────────────────────────────────────────────────────────╯'
                         echo
-                        echo '📄 Preview:'
-                        man \$section \$cmd 2>/dev/null | col -bx | $bat_cmd --language=man --style=numbers,changes --color=always --line-range=:50 2>/dev/null || echo '  ❌ Manual not available'
+
+                        # Man 页面内容预览
+                        if man \$section \$cmd >/dev/null 2>&1; then
+                            echo '📄 Manual Page Preview:'
+                            echo '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
+                            man \$section \$cmd 2>/dev/null | col -bx | $bat_cmd --language=man --style=header,grid --color=always --line-range=:40 --wrap=never 2>/dev/null
+                        else
+                            echo '❌ Manual page not available for '\$cmd'('\$section')'
+                            echo
+                            echo '💡 This might be because:'
+                            echo '   • The manual page is not installed'
+                            echo '   • The section number is incorrect'
+                            echo '   • The command name has changed'
+                        fi
                     " \
                     --bind="ctrl-/:change-preview-window(down,60%,border-top|right,55%,border-left|hidden)" \
                     --bind="ctrl-y:execute-silent(echo {} | awk '{print \$1}' | pbcopy)" \
@@ -188,7 +212,14 @@ if command -v bat >/dev/null 2>&1 || command -v batcat >/dev/null 2>&1; then
                     --header="📖 Man Pages Section $section | ENTER: 打开手册页" \
                     --preview="
                         cmd=\$(echo {} | awk '{print \$1}')
-                        man $section \$cmd 2>/dev/null | col -bx | $bat_cmd --language=man --color=always --line-range=:40 2>/dev/null || echo '手册页不可用'
+
+                        echo '📖 '\$cmd'($section) - Section $section'
+                        echo '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
+                        if man $section \$cmd >/dev/null 2>&1; then
+                            man $section \$cmd 2>/dev/null | col -bx | $bat_cmd --language=man --style=header --color=always --line-range=:35 --wrap=never 2>/dev/null
+                        else
+                            echo '❌ Manual page not available for '\$cmd' in section $section'
+                        fi
                     " \
                     --preview-window="right,50%" \
                     --bind="enter:execute(
