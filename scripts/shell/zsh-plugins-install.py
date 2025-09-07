@@ -1084,16 +1084,16 @@ def integrate_ssh_agent_management() -> bool:
     log_info("集成SSH代理管理...")
 
     try:
-        # 导入SSH代理管理器
-        ssh_agent_script = script_dir.parent / "security" / "ssh-agent-manager.py"
+        # 使用新的SSH代理配置生成器
+        ssh_agent_config_script = script_dir.parent / "security" / "ssh-agent-config-generator.py"
 
-        if not ssh_agent_script.exists():
-            log_warn("SSH代理管理器脚本不存在，跳过集成")
+        if not ssh_agent_config_script.exists():
+            log_warn("SSH代理配置生成器不存在，跳过集成")
             return True
 
-        # 调用SSH代理管理器的ZSH集成功能
+        # 调用SSH代理配置生成器
         result = subprocess.run([
-            sys.executable, str(ssh_agent_script)
+            sys.executable, str(ssh_agent_config_script)
         ], capture_output=True, text=True)
 
         if result.returncode == 0:

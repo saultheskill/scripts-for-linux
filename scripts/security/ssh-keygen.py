@@ -347,6 +347,10 @@ def prompt_ssh_agent_integration(key_path):
         return True
 
     log_info("正在集成SSH代理...")
+
+    # 首先确保SSH Agent配置文件存在
+    setup_ssh_agent_config()
+
     if ensure_ssh_agent_and_add_key(key_path):
         log_success("SSH密钥已成功添加到代理")
         return True
@@ -355,6 +359,28 @@ def prompt_ssh_agent_integration(key_path):
         log_info("您可以稍后手动执行以下命令添加密钥:")
         log_info(f"  ssh-add {key_path}")
         return False
+
+def setup_ssh_agent_config():
+    """设置SSH Agent配置"""
+    try:
+        # 调用SSH Agent配置生成器
+        config_generator_script = script_dir / "ssh-agent-config-generator.py"
+
+        if config_generator_script.exists():
+            log_info("配置SSH Agent自动加载...")
+            result = subprocess.run([sys.executable, str(config_generator_script)],
+                                  capture_output=True, text=True)
+
+            if result.returncode == 0:
+                log_info("SSH Agent配置已更新")
+            else:
+                log_warn("SSH Agent配置更新失败，但不影响当前操作")
+        else:
+            log_warn("SSH Agent配置生成器不存在，跳过配置")
+
+    except Exception as e:
+        log_warn(f"SSH Agent配置设置失败: {e}")
+        log_info("这不会影响当前的SSH密钥添加操作")
 
 def manage_ssh_agent():
     """SSH代理管理功能"""

@@ -131,6 +131,79 @@ def analyze_install_error(package_name: str, error_log: str) -> str:
     else:
         return "未知错误"
 
+def install_fd_find_special() -> bool:
+    """
+    特殊安装fd-find工具并创建fd别名
+
+    Returns:
+        bool: 安装是否成功
+    """
+    from common import log_info, log_success, log_warn
+
+    # 检查是否已安装
+    try:
+        result = subprocess.run(['which', 'fdfind'], capture_output=True, text=True)
+        if result.returncode == 0:
+            log_success("fd-find 已安装，跳过")
+            return True
+    except:
+        pass
+
+    sudo_cmd = check_root()
+
+    try:
+        # 安装fd-find包
+        log_info("安装fd-find...")
+        cmd = f"{sudo_cmd} apt install -y fd-find".strip()
+        result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+
+        if result.returncode != 0:
+            log_warn(f"fd-find安装失败: {result.stderr}")
+            return False
+
+        # 创建fd别名到.zshrc
+        log_info("配置fd别名...")
+        zshrc_path = os.path.expanduser("~/.zshrc")
+        alias_line = "alias fd='fdfind'"
+
+        if os.path.exists(zshrc_path):
+            with open(zshrc_path, 'r') as f:
+                content = f.read()
+
+            if alias_line not in content:
+                with open(zshrc_path, 'a') as f:
+                    f.write(f"\n# fd-find alias\n{alias_line}\n")
+                log_info("已添加fd别名到.zshrc")
+            else:
+                log_info("fd别名已存在")
+
+        log_success("fd-find安装和配置完成")
+        return True
+
+    except Exception as e:
+        log_warn(f"fd-find安装过程中发生错误: {str(e)}")
+        return False
+
+
+def install_thefuck_special() -> bool:
+    """
+    特殊安装thefuck工具
+    由于thefuck在Python 3.12中存在兼容性问题，暂时跳过安装
+
+    Returns:
+        bool: 安装是否成功
+    """
+    from common import log_info, log_success, log_warn
+
+    log_warn("thefuck工具在Python 3.12中存在兼容性问题")
+    log_info("建议手动安装或等待官方修复")
+    log_info("可以使用以下命令尝试手动安装:")
+    log_info("  sudo apt install python3-distutils")
+    log_info("  pipx install thefuck")
+    log_success("跳过thefuck安装")
+    return True
+
+
 def install_package_with_progress(package_name: str, package_desc: str,
                                 current: int, total: int) -> bool:
     """
@@ -360,7 +433,7 @@ def install_common_software() -> bool:
     # 配置 APT 优化
     configure_apt_for_speed()
 
-    # 定义常用软件包列表（7个基础工具包）
+    # 定义常用软件包列表（扩展版本）
     common_packages = [
         ("curl", "网络请求工具"),
         ("wget", "文件下载工具"),
@@ -370,7 +443,18 @@ def install_common_software() -> bool:
         ("unzip", "解压缩工具"),
         ("tmux", "终端工具"),
         ("thefuck", "改错工具"),
-        ("zip", "压缩工具")
+        ("zip", "压缩工具"),
+        ("fzf", "模糊查找工具"),
+        ("bat", "cat的增强版"),
+        ("btop", "系统监控工具"),
+        ("net-tools", "网络工具"),
+        ("ncdu", "磁盘使用分析"),
+        ("traceroute", "网络路由跟踪"),
+        ("netcat", "网络连接工具"),
+        ("mtr", "网络诊断工具"),
+        ("tshark", "网络包分析"),
+        ("nmap", "网络扫描工具"),
+        ("fd-find", "find的现代替代品")
     ]
 
     success_count = 0
@@ -437,11 +521,27 @@ def install_common_software() -> bool:
         print(f"{BLUE}━━━ 软件包 {current_num}/{total_count} ━━━{RESET}")
 
         try:
-            if install_package_with_progress(package_name, package_desc, current_num, total_count):
-                success_count += 1
+            # 特殊处理某些软件包的安装
+            if package_name == "thefuck":
+                log_info(f"安装 ({current_num}/{total_count}): {package_desc} ({package_name})")
+                if install_thefuck_special():
+                    success_count += 1
+                else:
+                    failed_count += 1
+                    failed_packages.append((package_name, package_desc))
+            elif package_name == "fd-find":
+                log_info(f"安装 ({current_num}/{total_count}): {package_desc} ({package_name})")
+                if install_fd_find_special():
+                    success_count += 1
+                else:
+                    failed_count += 1
+                    failed_packages.append((package_name, package_desc))
             else:
-                failed_count += 1
-                failed_packages.append((package_name, package_desc))
+                if install_package_with_progress(package_name, package_desc, current_num, total_count):
+                    success_count += 1
+                else:
+                    failed_count += 1
+                    failed_packages.append((package_name, package_desc))
         except KeyboardInterrupt:
             print(f"\n{YELLOW}安装被用户中断{RESET}")
             break
@@ -567,7 +667,7 @@ def show_software_header() -> None:
     print()
     print(f"{YELLOW}功能说明：{RESET}")
     print(f"{BLUE}{'─'*64}{RESET}")
-    print(f"  {GREEN}•{RESET} 安装7个基础工具包（curl, git, vim, htop等）")
+    print(f"  {GREEN}•{RESET} 安装20个常用工具包（curl, git, vim, htop, fzf, bat等）")
     print(f"  {GREEN}•{RESET} 智能检测已安装软件，避免重复安装")
     print(f"  {GREEN}•{RESET} 详细的安装进度显示和错误处理")
     print(f"{BLUE}{'─'*64}{RESET}")
@@ -615,6 +715,23 @@ def main() -> int:
         # 开始安装
         install_result = install_common_software()
 
+        # 如果安装成功，配置shell工具
+        if install_result:
+            log_info("配置现代shell工具...")
+            try:
+                shell_tools_config_script = script_dir / "shell-tools-config-generator.py"
+                if shell_tools_config_script.exists():
+                    result = subprocess.run([sys.executable, str(shell_tools_config_script)],
+                                          capture_output=True, text=True)
+                    if result.returncode == 0:
+                        log_success("Shell工具配置完成")
+                    else:
+                        log_warn("Shell工具配置失败，但不影响软件使用")
+                else:
+                    log_warn("Shell工具配置生成器不存在")
+            except Exception as e:
+                log_warn(f"Shell工具配置过程中发生错误: {e}")
+
         # 显示完成信息
         print()
         if install_result:
@@ -628,9 +745,10 @@ def main() -> int:
 
         print()
         print(f"{CYAN}后续步骤：{RESET}")
-        print("1. 运行相应命令验证安装结果")
-        print("2. 查看安装日志了解详细信息")
-        print("3. 如有问题，请检查网络连接和系统权限")
+        print("1. 运行 'source ~/.zshrc' 或重新启动终端以应用新配置")
+        print("2. 运行相应命令验证安装结果")
+        print("3. 查看安装日志了解详细信息")
+        print("4. 如有问题，请检查网络连接和系统权限")
         print()
 
         return 0 if install_result else 1
