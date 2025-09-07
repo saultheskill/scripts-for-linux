@@ -1,0 +1,101 @@
+# Shell Tools 模块配置文件
+# 定义所有模块的元数据、依赖关系和描述信息
+
+modules:
+  - name: "00-path-config.zsh"
+    description: "PATH和基础环境配置"
+    required_tools: []
+    dependencies: []
+    template_file: "00-path-config.zsh"
+    
+  - name: "01-tool-detection.zsh"
+    description: "工具可用性检测和别名统一化"
+    required_tools: ["bat", "fd"]
+    dependencies: ["00-path-config"]
+    template_file: "01-tool-detection.zsh"
+    
+  - name: "02-bat-config.zsh"
+    description: "bat工具核心配置和基础功能"
+    required_tools: ["bat"]
+    dependencies: ["01-tool-detection"]
+    template_file: "02-bat-config.zsh"
+    
+  - name: "03-fd-config.zsh"
+    description: "fd/fdfind工具配置和基础功能"
+    required_tools: ["fd"]
+    dependencies: ["01-tool-detection"]
+    template_file: "03-fd-config.zsh"
+    
+  - name: "04-fzf-core.zsh"
+    description: "fzf核心配置和显示设置"
+    required_tools: ["fzf"]
+    dependencies: ["01-tool-detection"]
+    template_file: "04-fzf-core.zsh"
+    
+  - name: "05-fzf-basic.zsh"
+    description: "fzf基础功能（文件搜索、编辑等）"
+    required_tools: ["fzf", "bat"]
+    dependencies: ["04-fzf-core", "02-bat-config"]
+    template_file: "05-fzf-basic.zsh"
+    
+  - name: "06-fzf-advanced.zsh"
+    description: "fzf高级功能（动态重载、模式切换等）"
+    required_tools: ["fzf", "bat", "fd"]
+    dependencies: ["05-fzf-basic", "03-fd-config"]
+    template_file: "06-fzf-advanced.zsh"
+    
+  - name: "07-ripgrep-config.zsh"
+    description: "ripgrep配置和基础集成"
+    required_tools: ["rg"]
+    dependencies: ["01-tool-detection"]
+    template_file: "07-ripgrep-config.zsh"
+    
+  - name: "08-ripgrep-fzf.zsh"
+    description: "ripgrep + fzf高级集成功能"
+    required_tools: ["rg", "fzf", "bat"]
+    dependencies: ["07-ripgrep-config", "05-fzf-basic"]
+    template_file: "08-ripgrep-fzf.zsh"
+    
+  - name: "09-git-integration.zsh"
+    description: "git + fzf + bat集成功能"
+    required_tools: ["git", "fzf", "bat"]
+    dependencies: ["05-fzf-basic"]
+    template_file: "09-git-integration.zsh"
+    
+  - name: "10-log-monitoring.zsh"
+    description: "日志监控和tail集成功能"
+    required_tools: ["bat", "fzf"]
+    dependencies: ["02-bat-config", "04-fzf-core"]
+    template_file: "10-log-monitoring.zsh"
+    
+  - name: "11-man-integration.zsh"
+    description: "man页面集成（修复batman搜索功能）"
+    required_tools: ["bat", "fzf"]
+    dependencies: ["02-bat-config", "04-fzf-core"]
+    template_file: "11-man-integration.zsh"
+    
+  - name: "12-apt-integration.zsh"
+    description: "APT包管理集成功能"
+    required_tools: ["fzf", "bat"]
+    dependencies: ["04-fzf-core", "02-bat-config"]
+    template_file: "12-apt-integration.zsh"
+    
+  - name: "13-utility-functions.zsh"
+    description: "通用工具函数（search-all等）"
+    required_tools: ["bat", "fd", "rg"]
+    dependencies: ["02-bat-config", "03-fd-config", "07-ripgrep-config"]
+    template_file: "13-utility-functions.zsh"
+    
+  - name: "99-aliases-summary.zsh"
+    description: "最终别名汇总和show-tools功能"
+    required_tools: []
+    dependencies: ["*"]
+    template_file: "99-aliases-summary.zsh"
+
+# 配置信息
+config:
+  version: "2.1"
+  author: "saul"
+  generator_version: "shell-tools-config-generator.py v2.1"
+  templates_dir: "templates"
+  output_dir: "~/.oh-my-zsh/custom/modules"
