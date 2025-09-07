@@ -37,6 +37,21 @@ def generate_shell_tools_config():
 # =============================================================================
 
 # =============================================================================
+# 环境变量和PATH配置
+# =============================================================================
+
+# 修复Ubuntu/Debian系统PATH问题 - 确保/bin和/usr/bin在PATH中
+case ":$PATH:" in
+    *:/bin:*) ;;
+    *) export PATH="/bin:$PATH" ;;
+esac
+
+case ":$PATH:" in
+    *:/usr/bin:*) ;;
+    *) export PATH="/usr/bin:$PATH" ;;
+esac
+
+# =============================================================================
 # 工具可用性检测和别名统一化
 # =============================================================================
 
@@ -66,15 +81,22 @@ if command -v bat >/dev/null 2>&1 || command -v batcat >/dev/null 2>&1; then
     export BAT_THEME="OneHalfDark"
     export BAT_PAGER="less -RFK"
 
-    # 基础别名
-    alias cat='bat --paging=never'
-    alias less='bat --paging=always'
-    alias more='bat --paging=always'
-
-    # 实用别名
-    alias batl='bat --paging=always'  # 强制分页
-    alias batn='bat --style=plain'    # 纯文本模式，无装饰
-    alias batp='bat --plain'          # 纯文本模式（简写）
+    # 基础别名 - 使用动态检测的bat命令
+    if command -v batcat >/dev/null 2>&1; then
+        alias cat='batcat --paging=never'
+        alias less='batcat --paging=always'
+        alias more='batcat --paging=always'
+        alias batl='batcat --paging=always'  # 强制分页
+        alias batn='batcat --style=plain'    # 纯文本模式，无装饰
+        alias batp='batcat --plain'          # 纯文本模式（简写）
+    elif command -v bat >/dev/null 2>&1; then
+        alias cat='bat --paging=never'
+        alias less='bat --paging=always'
+        alias more='bat --paging=always'
+        alias batl='bat --paging=always'  # 强制分页
+        alias batn='bat --style=plain'    # 纯文本模式，无装饰
+        alias batp='bat --plain'          # 纯文本模式（简写）
+    fi
 fi
 
 # =============================================================================
@@ -98,7 +120,15 @@ if command -v fd >/dev/null 2>&1; then
                 echo "示例: fdbat '\\.py$' src/"
                 return 1
             fi
-            fd "$@" --type f -X bat
+
+            # 使用动态检测的bat命令
+            if command -v batcat >/dev/null 2>&1; then
+                fd "$@" --type f -X batcat
+            elif command -v bat >/dev/null 2>&1; then
+                fd "$@" --type f -X bat
+            else
+                fd "$@" --type f -X cat
+            fi
         }
 
         # 搜索并预览文件内容
@@ -358,8 +388,61 @@ if command -v fzf >/dev/null 2>&1; then
         fi
     }
 
-    # 实用别名
-    alias fe='fzf-edit'           # 搜索并编辑文件
+    # =============================================================================
+    # 基于fzf-basic-example.md的文件操作增强功能
+    # =============================================================================
+
+    # 文件打开功能 - 基于basic example的fe函数
+    fe() {
+        local files
+        IFS=$'\n' files=($(fzf-tmux --query="$1" --multi --select-1 --exit-0))
+        [[ -n "$files" ]] && ${EDITOR:-vim} "${files[@]}"
+    }
+
+    # 文件打开（使用默认应用） - 基于basic example的fo函数
+    fo() {
+        local files
+        IFS=$'\n' files=($(fzf-tmux --query="$1" --multi --select-1 --exit-0))
+        [[ -n "$files" ]] && open "${files[@]}" 2>/dev/null || xdg-open "${files[@]}" 2>/dev/null
+    }
+
+    # 查看文件 - 基于basic example的vf函数
+    vf() {
+        # 确保bat命令可用
+        local bat_cmd
+        if command -v batcat >/dev/null 2>&1; then
+            bat_cmd='batcat'
+        elif command -v bat >/dev/null 2>&1; then
+            bat_cmd='bat'
+        else
+            echo "错误：未找到bat工具，请先安装"
+            return 1
+        fi
+
+        fzf --preview "$bat_cmd --color=always --style=numbers --line-range=:500 {}" | xargs -r "$bat_cmd" --paging=always
+    }
+
+    # 目录切换功能 - 基于basic example的fd函数（重命名为fdir避免冲突）
+    fdir() {
+        local dir
+        dir=$(find ${1:-.} -path '*/\.*' -prune -o -type d -print 2> /dev/null | fzf +m) &&
+        cd "$dir"
+    }
+
+    # 包含隐藏目录的切换 - 基于basic example的fda函数（重命名为fdira）
+    fdira() {
+        local dir
+        dir=$(find ${1:-.} -type d 2> /dev/null | fzf +m) && cd "$dir"
+    }
+
+    # 树形目录切换 - 基于basic example的fdr函数（重命名为fdirt）
+    fdirt() {
+        local dir
+        dir=$(find ${1:-.} -type d 2> /dev/null | fzf +m --preview 'tree -C {} | head -200') && cd "$dir"
+    }
+
+    # 实用别名 - 保持现有别名并添加新的
+    alias fe-old='fzf-edit'       # 保持旧版本
     alias fcd='fzf-cd'            # 搜索并切换目录
     alias fp='fzf-project'        # 快速跳转项目
     alias fc='fzf-content'        # 搜索文件内容
@@ -367,6 +450,120 @@ if command -v fzf >/dev/null 2>&1; then
     alias fps='fzf-processes'     # 动态进程管理
     alias ffd='fzf-files-dirs'    # 文件目录切换
     alias ftm='fzf-toggle-mode'   # 单键模式切换
+
+    # =============================================================================
+    # 基于fzf-basic-example.md的历史命令和进程管理功能
+    # =============================================================================
+
+    # 历史命令重复执行 - 基于basic example的fh函数
+    fh() {
+        print -z $( ([ -n "$ZSH_NAME" ] && fc -l 1 || history) | fzf +s --tac | sed -E 's/ *[0-9]*\\*? *//' | sed -E 's/\\\\/\\\\\\\\/g')
+    }
+
+    # 进程终止 - 基于basic example的fkill函数
+    fkill() {
+        local pid
+        if [ "$UID" != "0" ]; then
+            pid=$(ps -f -u $UID | sed 1d | fzf -m | awk '{print $2}')
+        else
+            pid=$(ps -ef | sed 1d | fzf -m | awk '{print $2}')
+        fi
+
+        if [ "x$pid" != "x" ]
+        then
+            echo $pid | xargs kill -${1:-9}
+        fi
+    }
+
+    # 内容搜索 - 基于basic example的fif函数（find in file）
+    fif() {
+        if [ ! "$#" -gt 0 ]; then echo "Need a string to search for!"; return 1; fi
+        rg --files-with-matches --no-messages "$1" | fzf --preview "highlight -O ansi -l {} 2> /dev/null | rg --colors 'match:bg:yellow' --ignore-case --pretty --context 10 '$1' || rg --ignore-case --pretty --context 10 '$1' {}"
+    }
+
+    # 内容搜索并编辑 - 基于basic example的vg函数（vim grep）
+    vg() {
+        # 确保bat命令可用
+        local bat_cmd
+        if command -v batcat >/dev/null 2>&1; then
+            bat_cmd='batcat'
+        elif command -v bat >/dev/null 2>&1; then
+            bat_cmd='bat'
+        else
+            echo "错误：未找到bat工具，请先安装"
+            return 1
+        fi
+
+        local file
+        local line
+
+        read -r file line <<<"$(rg --no-heading --line-number $@ | fzf -0 -1 | awk -F: '{print $1, $2}')"
+
+        if [[ -n $file ]]
+        then
+            ${EDITOR:-vim} $file +$line
+        fi
+    }
+
+    # 新增别名 - 基于basic example
+    # fe, fo, vf 已经定义为函数
+    alias fdir-basic='fdir'       # 基础目录切换
+    alias fdira-all='fdira'       # 包含隐藏目录
+    alias fdirt-tree='fdirt'      # 树形预览目录
+
+    # =============================================================================
+    # 基于fzf-basic-example.md的tmux集成功能
+    # =============================================================================
+
+    # tmux会话管理 - 基于basic example的tm函数
+    if command -v tmux >/dev/null 2>&1; then
+        tm() {
+            [[ -n "$TMUX" ]] && change="switch-client" || change="attach-session"
+            if [ $1 ]; then
+                tmux $change -t "$1" 2>/dev/null || (tmux new-session -d -s $1 && tmux $change -t "$1"); return
+            fi
+            session=$(tmux list-sessions -F "#{session_name}" 2>/dev/null | fzf --exit-0) &&  tmux $change -t "$session" || echo "No sessions found."
+        }
+
+        # tmux会话切换 - 基于basic example的fs函数
+        fs() {
+            local session
+            session=$(tmux list-sessions -F "#{session_name}" | \
+                fzf --query="$1" --select-1 --exit-0) &&
+            tmux switch-client -t "$session"
+        }
+
+        # tmux窗格切换 - 基于basic example的ftpane函数
+        ftpane() {
+            local panes current_window current_pane target target_window target_pane
+            panes=$(tmux list-panes -s -F '#I:#P - #{pane_current_path} #{pane_current_command}')
+            current_pane=$(tmux display-message -p '#I:#P')
+            current_window=$(tmux display-message -p '#I')
+
+            target=$(echo "$panes" | grep -v "$current_pane" | fzf +m --reverse) || return
+
+            target_window=$(echo $target | awk 'BEGIN{FS=":|-"} {print$1}')
+            target_pane=$(echo $target | awk 'BEGIN{FS=":|-"} {print$2}' | cut -c 1)
+
+            if [[ $current_window -eq $target_window ]]; then
+                tmux select-pane -t ${target_window}.${target_pane}
+            else
+                tmux select-pane -t ${target_window}.${target_pane} &&
+                tmux select-window -t $target_window
+            fi
+        }
+
+        # tmux别名
+        alias tmux-session='tm'       # tmux会话管理
+        alias tmux-switch='fs'        # 会话切换
+        alias tmux-pane='ftpane'      # 窗格切换
+    fi
+
+    # 历史和进程管理别名
+    alias fhist='fh'              # 历史命令搜索
+    alias fkill-proc='fkill'      # 进程终止
+    alias find-in-files='fif'     # 文件内容搜索
+    alias vim-grep='vg'           # 搜索并编辑
 fi
 
 # =============================================================================
@@ -594,25 +791,55 @@ if command -v git >/dev/null 2>&1 && (command -v bat >/dev/null 2>&1 || command 
 
         local ref_file="$1"
         local file_ext="${ref_file##*.}"
-        git show "$ref_file" | bat -l "$file_ext"
+
+        # 使用动态检测的bat命令
+        if command -v batcat >/dev/null 2>&1; then
+            git show "$ref_file" | batcat -l "$file_ext"
+        elif command -v bat >/dev/null 2>&1; then
+            git show "$ref_file" | bat -l "$file_ext"
+        else
+            git show "$ref_file"
+        fi
     }
 
     # git diff 与 bat 集成：batdiff 功能
     batdiff() {
+        # 使用动态检测的bat命令
+        local bat_cmd
+        if command -v batcat >/dev/null 2>&1; then
+            bat_cmd='batcat'
+        elif command -v bat >/dev/null 2>&1; then
+            bat_cmd='bat'
+        else
+            git diff "$@"
+            return
+        fi
+
         git diff --name-only --relative --diff-filter=d "$@" |
         while read -r file; do
             echo "==> $file <=="
-            git diff "$@" -- "$file" | bat --language=diff
+            git diff "$@" -- "$file" | "$bat_cmd" --language=diff
             echo
         done
     }
 
     # 增强的 git log 查看
     git-log-bat() {
+        # 使用动态检测的bat命令
+        local bat_cmd
+        if command -v batcat >/dev/null 2>&1; then
+            bat_cmd='batcat'
+        elif command -v bat >/dev/null 2>&1; then
+            bat_cmd='bat'
+        else
+            git log --oneline --color=always "$@" | fzf --ansi
+            return
+        fi
+
         git log --oneline --color=always "$@" |
-        fzf --ansi --preview 'git show --color=always {1} | bat --language=diff' \
+        fzf --ansi --preview "git show --color=always {1} | $bat_cmd --language=diff" \
             --preview-window=right:60%:wrap \
-            --bind 'enter:become(git show {1} | bat --language=diff --paging=always)'
+            --bind "enter:become(git show {1} | $bat_cmd --language=diff --paging=always)"
     }
 
     # =============================================================================
@@ -634,13 +861,13 @@ if command -v git >/dev/null 2>&1 && (command -v bat >/dev/null 2>&1 || command 
 
         git status --porcelain |
         fzf --multi \
-            --preview "git diff --color=always {2} | $bat_cmd --language=diff" \
+            --preview "git diff --color=always \$(echo {} | awk '{print \$2}') | $bat_cmd --language=diff" \
             --preview-window 'right:60%:wrap' \
             --header 'CTRL-A: Add | CTRL-R: Reset | CTRL-D: Diff | Enter: Edit' \
-            --bind 'ctrl-a:execute(git add {2})' \
-            --bind 'ctrl-r:execute(git reset {2})' \
-            --bind "ctrl-d:execute(git diff {2} | $bat_cmd --language=diff --paging=always)" \
-            --bind 'enter:become(${EDITOR:-vim} {2})'
+            --bind 'ctrl-a:execute(git add $(echo {} | awk "{print \$2}"))' \
+            --bind 'ctrl-r:execute(git reset $(echo {} | awk "{print \$2}"))' \
+            --bind "ctrl-d:execute(git diff \$(echo {} | awk '{print \$2}') | $bat_cmd --language=diff --paging=always)" \
+            --bind 'enter:become(${EDITOR:-vim} $(echo {} | awk "{print \$2}"))'
     }
 
     # Git分支交互选择
@@ -666,7 +893,7 @@ if command -v git >/dev/null 2>&1 && (command -v bat >/dev/null 2>&1 || command 
             --bind 'ctrl-o:execute(git checkout $(sed s/^..// <<< {} | cut -d" " -f1))' \
             --bind 'ctrl-d:execute(git branch -d $(sed s/^..// <<< {} | cut -d" " -f1))' \
             --bind 'ctrl-m:execute(git merge $(sed s/^..// <<< {} | cut -d" " -f1))' \
-            --bind "enter:execute(git log --oneline --graph --color=always \$(sed s/^..// <<< {} | cut -d\" \" -f1) | $bat_cmd --language=gitlog --paging=always)"
+            --bind "enter:execute(git log --oneline --graph --color=always \$(sed s/^..// <<< {} | cut -d' ' -f1) | $bat_cmd --language=gitlog --paging=always)"
     }
 
     # Git提交哈希交互选择
@@ -751,7 +978,14 @@ if command -v bat >/dev/null 2>&1 || command -v batcat >/dev/null 2>&1; then
             return 1
         fi
 
-        tail -f "$file" | bat --paging=never -l "$syntax"
+        # 使用动态检测的bat命令
+        if command -v batcat >/dev/null 2>&1; then
+            tail -f "$file" | batcat --paging=never -l "$syntax"
+        elif command -v bat >/dev/null 2>&1; then
+            tail -f "$file" | bat --paging=never -l "$syntax"
+        else
+            tail -f "$file"
+        fi
     }
 
     # 多文件日志监控
@@ -764,7 +998,14 @@ if command -v bat >/dev/null 2>&1 || command -v batcat >/dev/null 2>&1; then
         for file in "$@"; do
             if [[ -f "$file" ]]; then
                 echo "==> 监控: $file <=="
-                tail -f "$file" | bat --paging=never -l log &
+                # 使用动态检测的bat命令
+                if command -v batcat >/dev/null 2>&1; then
+                    tail -f "$file" | batcat --paging=never -l log &
+                elif command -v bat >/dev/null 2>&1; then
+                    tail -f "$file" | bat --paging=never -l log &
+                else
+                    tail -f "$file" &
+                fi
             fi
         done
         wait
@@ -875,10 +1116,18 @@ if command -v bat >/dev/null 2>&1 || command -v batcat >/dev/null 2>&1; then
             --bind "enter:execute(if [[ {} == 'ALL' ]]; then tail -f '$logfile' | $bat_cmd --paging=never -l log; else tail -f '$logfile' | grep -i {} | $bat_cmd --paging=never -l log; fi)"
     }
 
-    # 常用日志监控别名
+    # 常用日志监控别名 - 使用动态检测的bat命令
     alias tailsys='tailbat /var/log/syslog log'
     alias tailauth='tailbat /var/log/auth.log log'
-    alias taildmesg='dmesg -w | bat --paging=never -l log'
+
+    # dmesg别名需要动态检测
+    if command -v batcat >/dev/null 2>&1; then
+        alias taildmesg='dmesg -w | batcat --paging=never -l log'
+    elif command -v bat >/dev/null 2>&1; then
+        alias taildmesg='dmesg -w | bat --paging=never -l log'
+    else
+        alias taildmesg='dmesg -w'
+    fi
     alias flog='fzf-log-tail'          # 交互式日志选择
     alias fmlogs='fzf-multi-log-tail'  # 多日志监控
     alias flevel='fzf-log-level'       # 日志级别过滤
@@ -889,46 +1138,116 @@ fi
 # =============================================================================
 
 if command -v bat >/dev/null 2>&1 || command -v batcat >/dev/null 2>&1; then
-    # 设置 MANPAGER 使用 bat 作为 man 页面的分页器
-    export MANPAGER="sh -c 'awk '\''{gsub(/\\x1B\\[[0-9;]*m/, \"\", \\$0); gsub(/.\\x08/, \"\", \\$0); print}'\'' | bat -p -lman'"
+    # 设置 MANPAGER 使用 bat 作为 man 页面的分页器 - 修复兼容性
+    if command -v batcat >/dev/null 2>&1; then
+        export MANPAGER="sh -c 'col -bx | batcat -l man -p'"
+    elif command -v bat >/dev/null 2>&1; then
+        export MANPAGER="sh -c 'col -bx | bat -l man -p'"
+    fi
 
-    # 备用 man 函数（如果上面的不工作）
-    batman() {
-        if [[ $# -eq 0 ]]; then
-            echo "用法: batman <命令名>"
-            return 1
-        fi
-        man "$@" | bat -p -lman
-    }
+    # 基于fzf-basic-example.md的高级man页面功能
+    if command -v fzf >/dev/null 2>&1; then
+        # 简单的man页面搜索 - 基于basic example
+        fman() {
+            man -k . | fzf -q "$1" --prompt='man> ' --preview 'echo {} | tr -d "()" | awk "{printf \"%s \", \$2} {print \$1}" | xargs -r man' | tr -d '()' | awk '{printf "%s ", $2} {print $1}' | xargs -r man
+        }
 
-    # man 页面搜索
-    man-search() {
-        if [[ $# -eq 0 ]]; then
-            echo "用法: man-search <关键词>"
-            return 1
-        fi
-        apropos "$@" | fzf --preview 'man {1} | bat -p -lman' --preview-window=right:70%:wrap
-    }
+        # 高级man页面widget - 修复搜索和主题问题
+        fzf-man-widget() {
+            # 确保bat命令可用
+            local bat_cmd
+            if command -v batcat >/dev/null 2>&1; then
+                bat_cmd='batcat'
+            elif command -v bat >/dev/null 2>&1; then
+                bat_cmd='bat'
+            else
+                echo "错误：未找到bat工具，请先安装"
+                return 1
+            fi
+
+            # 修复：使用有效的bat主题和简化的预览命令
+            local preview_cmd="echo {} | awk '{print \$1}' | xargs -r man 2>/dev/null | col -bx | $bat_cmd --language=man --plain --color=always --theme=OneHalfDark"
+
+            # 修复：简化man页面解析
+            man -k . 2>/dev/null | sort | \
+            awk -v cyan=\$(tput setaf 6) -v blue=\$(tput setaf 4) -v res=\$(tput sgr0) -v bld=\$(tput bold) '{ \$1=cyan bld \$1; \$2=res blue \$2; } 1' | \
+            fzf \
+                -q "\$1" \
+                --ansi \
+                --tiebreak=begin \
+                --prompt=' Man > ' \
+                --preview-window '50%,rounded,<50(up,85%,border-bottom)' \
+                --preview "\$preview_cmd" \
+                --bind "enter:execute(echo {} | awk '{print \$1}' | xargs -r man)" \
+                --bind "alt-c:+change-preview(echo {} | awk '{print \$1}' | xargs -I {} curl -s cht.sh/{} 2>/dev/null || echo 'cheat.sh not available')+change-prompt(' Cheat > ')" \
+                --bind "alt-m:+change-preview(\$preview_cmd)+change-prompt(' Man > ')" \
+                --bind "alt-t:+change-preview(echo {} | awk '{print \$1}' | xargs -r tldr --color=always 2>/dev/null || echo 'tldr not available')+change-prompt(' TLDR > ')"
+        }
+
+        # 别名 - 使用高级版本替换简单版本
+        alias batman='fzf-man-widget'
+        alias man-search='fman'
+    else
+        # 降级到简单版本（如果没有fzf）
+        batman() {
+            if [[ $# -eq 0 ]]; then
+                echo "用法: batman <命令名>"
+                return 1
+            fi
+
+            # 使用动态检测的bat命令
+            if command -v batcat >/dev/null 2>&1; then
+                man "$@" | batcat -p -lman
+            elif command -v bat >/dev/null 2>&1; then
+                man "$@" | bat -p -lman
+            else
+                man "$@"
+            fi
+        }
+
+        man-search() {
+            if [[ $# -eq 0 ]]; then
+                echo "用法: man-search <关键词>"
+                return 1
+            fi
+            apropos "$@"
+        }
+    fi
 fi
 
 # =============================================================================
 # xclip 集成：复制工具集成
 # =============================================================================
 
-if command -v xclip >/dev/null 2>&1 && command -v bat >/dev/null 2>&1; then
+if command -v xclip >/dev/null 2>&1 && (command -v bat >/dev/null 2>&1 || command -v batcat >/dev/null 2>&1); then
     # 复制文件内容到剪贴板（纯文本）
     batcopy() {
         if [[ $# -eq 0 ]]; then
             echo "用法: batcopy <文件>"
             return 1
         fi
-        bat --plain "$1" | xclip -selection clipboard
+
+        # 使用动态检测的bat命令
+        if command -v batcat >/dev/null 2>&1; then
+            batcat --plain "$1" | xclip -selection clipboard
+        elif command -v bat >/dev/null 2>&1; then
+            bat --plain "$1" | xclip -selection clipboard
+        else
+            cat "$1" | xclip -selection clipboard
+        fi
         echo "文件内容已复制到剪贴板"
     }
 
     # 从剪贴板粘贴并用 bat 显示
     batpaste() {
-        xclip -selection clipboard -o | bat --language="${1:-txt}"
+        # 使用动态检测的bat命令
+        if command -v batcat >/dev/null 2>&1; then
+            xclip -selection clipboard -o | batcat --language="${1:-txt}"
+        elif command -v bat >/dev/null 2>&1; then
+            xclip -selection clipboard -o | bat --language="${1:-txt}"
+        else
+            xclip -selection clipboard -o
+        fi
     }
 fi
 
@@ -963,6 +1282,86 @@ fi
 
 if command -v ncdu >/dev/null 2>&1; then
     alias du='ncdu'
+fi
+
+# =============================================================================
+# APT + fzf 集成：交互式软件包管理
+# =============================================================================
+
+if command -v apt-cache >/dev/null 2>&1 && command -v fzf >/dev/null 2>&1 && command -v xargs >/dev/null 2>&1; then
+    # 交互式APT软件包搜索和安装 - 主要功能
+    alias af='apt-cache search "" | sort | cut --delimiter " " --fields 1 | fzf --multi --cycle --reverse --preview-window=right:70%:wrap --preview "apt-cache show {1}" | xargs -r sudo apt install -y'
+
+    # APT软件包搜索（仅搜索，不安装）
+    apt-search() {
+        if [[ $# -eq 0 ]]; then
+            echo "用法: apt-search [搜索词]"
+            echo "功能: 交互式搜索APT软件包（不安装）"
+            echo "示例: apt-search python"
+            return 1
+        fi
+
+        # 修复：正确传递搜索参数给apt-cache search
+        apt-cache search "$*" | sort |
+        fzf --multi --cycle --reverse \
+            --query="$*" \
+            --preview-window=right:70%:wrap \
+            --preview "apt-cache show {1}" \
+            --header "搜索: $* | TAB: 多选 | ENTER: 查看详情 | ESC: 退出" |
+        cut --delimiter " " --fields 1
+    }
+
+    # APT已安装软件包管理
+    apt-installed() {
+        dpkg --get-selections | grep -v deinstall | cut -f1 |
+        fzf --multi --cycle --reverse \
+            --preview-window=right:70%:wrap \
+            --preview "apt-cache show {1}" \
+            --header "已安装的软件包 | TAB: 多选 | ENTER: 查看详情"
+    }
+
+    # APT软件包信息查看
+    apt-info() {
+        if [[ $# -eq 0 ]]; then
+            echo "用法: apt-info <软件包名>"
+            echo "功能: 查看软件包详细信息"
+            return 1
+        fi
+
+        # 确保bat命令可用
+        local bat_cmd
+        if command -v batcat >/dev/null 2>&1; then
+            bat_cmd='batcat'
+        elif command -v bat >/dev/null 2>&1; then
+            bat_cmd='bat'
+        else
+            apt-cache show "$1"
+            return
+        fi
+
+        apt-cache show "$1" | "$bat_cmd" -l yaml --paging=always
+    }
+
+    # APT软件包依赖查看
+    apt-deps() {
+        if [[ $# -eq 0 ]]; then
+            echo "用法: apt-deps <软件包名>"
+            echo "功能: 查看软件包依赖关系"
+            return 1
+        fi
+
+        apt-cache depends "$1" | grep -E "^\s*(Depends|Recommends|Suggests):" |
+        sed 's/^[[:space:]]*//' |
+        fzf --preview "apt-cache show {2}" \
+            --preview-window=right:60%:wrap \
+            --header "依赖关系: $1"
+    }
+
+    # APT别名
+    alias as='apt-search'        # APT搜索
+    alias ai='apt-installed'     # 已安装软件包
+    alias ainfo='apt-info'       # 软件包信息
+    alias adeps='apt-deps'       # 依赖关系
 fi
 
 # =============================================================================
@@ -1167,11 +1566,18 @@ show-tools() {
     echo "==> 🚀 现代命令行工具组合 - 基于fzf ADVANCED.md全面实现 <=="
     echo
     echo "📁 文件搜索和预览:"
-    echo "  fe          - fzf + bat: 搜索并编辑文件"
+    echo "  fe          - 交互式文件编辑（基于basic example）"
+    echo "  fo          - 用默认应用打开文件"
+    echo "  vf          - 交互式文件查看（bat预览）"
     echo "  fcd         - fzf + fd: 搜索并切换目录"
     echo "  fp          - fzf: 快速跳转项目目录"
     echo "  fc          - fzf + rg: 搜索文件内容"
     echo "  fthemes     - fzf + bat: 预览 bat 主题"
+    echo
+    echo "📂 目录导航增强（基于basic example）:"
+    echo "  fdir        - 基础目录切换"
+    echo "  fdira       - 包含隐藏目录的切换"
+    echo "  fdirt       - 树形预览目录切换"
     echo
     echo "🔄 动态重载和模式切换 (基于ADVANCED.md):"
     echo "  fps         - fzf动态进程管理 (CTRL-R重载)"
@@ -1180,7 +1586,13 @@ show-tools() {
     echo "  fzf-popup   - tmux popup模式 (需要tmux 3.3+)"
     echo "  fzf-side    - tmux侧边栏模式"
     echo
-    echo "🔍 高级Ripgrep集成 (基于ADVANCED.md):"
+    echo "� 历史命令和进程管理（基于basic example）:"
+    echo "  fh          - 历史命令搜索和重复执行"
+    echo "  fkill       - 交互式进程终止"
+    echo "  fif         - 文件内容搜索（find in files）"
+    echo "  vg          - 搜索内容并编辑（vim grep）"
+    echo
+    echo "�🔍 高级Ripgrep集成 (基于ADVANCED.md):"
     echo "  rfv         - Ripgrep + fzf二级过滤"
     echo "  rgi         - 交互式Ripgrep启动器"
     echo "  rg2         - 双阶段搜索 (ALT-Enter切换)"
@@ -1213,7 +1625,14 @@ show-tools() {
     echo "  port        - 端口占用检查"
     echo "  info        - 系统信息概览"
     echo
-    echo "📋 复制和粘贴:"
+    echo "� APT软件包管理 (Ubuntu/Debian):"
+    echo "  af          - 交互式搜索和安装APT软件包"
+    echo "  as          - APT软件包搜索（不安装）"
+    echo "  ai          - 查看已安装的软件包"
+    echo "  ainfo       - 查看软件包详细信息"
+    echo "  adeps       - 查看软件包依赖关系"
+    echo
+    echo "�📋 复制和粘贴:"
     echo "  batcopy     - bat + xclip: 复制文件内容"
     echo "  batpaste    - xclip + bat: 粘贴并高亮显示"
     echo
@@ -1230,8 +1649,11 @@ show-tools() {
     echo "  CTRL-S      - 切换排序"
     echo "  CTRL-R      - 重载数据"
     echo
-    echo "🎨 tmux集成 (需要tmux 3.3+):"
-    echo "  fzf-tmux-center  - 中央popup"
+    echo "🎨 tmux集成功能:"
+    echo "  tm          - tmux会话管理（基于basic example）"
+    echo "  fs          - tmux会话切换"
+    echo "  ftpane      - tmux窗格切换"
+    echo "  fzf-tmux-center  - 中央popup (需要tmux 3.3+)"
     echo "  fzf-tmux-right   - 右侧popup"
     echo "  fzf-tmux-bottom  - 底部popup"
     echo "  fzf-tmux-top     - 顶部popup"
