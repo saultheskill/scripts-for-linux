@@ -114,15 +114,27 @@ fi
 # bat (cat的增强版) 配置
 # =============================================================================
 
+# 检查 batcat 是否安装（Ubuntu 中 bat 工具的实际命令）
 if command -v batcat >/dev/null 2>&1; then
-    # bat默认选项
-    export BAT_STYLE="numbers,changes,header"
-    export BAT_THEME="OneHalfDark"
+    # 1. 配置分页器（pager）：优先使用 less 并添加优化参数
+    # -R: 支持原始控制字符（确保颜色显示正常）
+    # -F: 若内容少于一屏，自动退出分页器（类似 cat 的即时显示）
+    # -K: 按 Ctrl+C 时立即退出分页器，不显示 "Terminated" 提示
+    export BAT_PAGER="less -RFK"
 
-    # 别名
-    alias cat='batcat'
-    alias less='batcat'
-    alias more='batcat'
+    # 2. 核心别名配置（覆盖系统默认的 cat/less/more）
+    # --style: 显示行号（numbers）、Git 变更（changes）、文件头（header）
+    # --theme: 语法高亮主题（可替换为你喜欢的主题，如 TwoDark、Monokai Extended）
+    # --italic-text: 始终斜体文本（需要终端支持）
+    # --paging: 分页策略（never：从不分页；always：强制分页）
+    alias cat='batcat --style="numbers,changes,header" --theme="OneHalfDark" --italic-text=always --paging=never'
+    alias less='batcat --paging=always'  # 强制分页时用 batcat的分页器
+    alias more='batcat --paging=always'  # 兼容 more 兼容
+
+    # 3. 额外实用命令：快速查看主题列表并预览（依赖 fzf）
+    if command -v fzf >/dev/null 2>&1; then
+        alias bat-themes='batcat --list-themes | fzf --preview="batcat --theme={} --color=always ~/.bashrc"'
+    fi
 fi
 
 # =============================================================================
