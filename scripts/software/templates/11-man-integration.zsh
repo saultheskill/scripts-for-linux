@@ -31,10 +31,11 @@ if command -v bat >/dev/null 2>&1 || command -v batcat >/dev/null 2>&1; then
                         cmd=\$(echo {} | awk '{print \$1}')
                         section=\$(echo {} | sed 's/.*(\([^)]*\)).*/\1/')
 
-                        echo '📖 '\$cmd'('\$section')'
+                        echo '📖 '\$cmd'('\$section') - 快速预览'
                         echo '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
                         if man \$section \$cmd >/dev/null 2>&1; then
-                            man \$section \$cmd 2>/dev/null | col -bx | $bat_cmd --language=man --style=header --color=always --line-range=:25 --wrap=never 2>/dev/null
+                            # 显示更多内容，适合快速浏览
+                            man \$section \$cmd 2>/dev/null | col -bx | $bat_cmd --language=man --style=header --color=always --line-range=:60 --wrap=never 2>/dev/null
                         else
                             echo '❌ Manual page not available'
                         fi
@@ -115,7 +116,7 @@ if command -v bat >/dev/null 2>&1 || command -v batcat >/dev/null 2>&1; then
                     --query="$1" \
                     --ansi \
                     --tiebreak=begin \
-                    --preview-window="right,55%,border-left" \
+                    --preview-window="right,60%,border-left,wrap" \
                     --preview="
                         cmd=\$(echo {} | awk '{print \$1}')
                         section=\$(echo {} | sed 's/.*(\([^)]*\)).*/\1/')
@@ -130,11 +131,12 @@ if command -v bat >/dev/null 2>&1 || command -v batcat >/dev/null 2>&1; then
                         echo '╰─────────────────────────────────────────────────────────────╯'
                         echo
 
-                        # Man 页面内容预览
+                        # Man 页面内容预览（完整内容，支持滚动）
                         if man \$section \$cmd >/dev/null 2>&1; then
-                            echo '📄 Manual Page Preview:'
+                            echo '📄 Manual Page Preview (完整内容，可滚动):'
                             echo '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
-                            man \$section \$cmd 2>/dev/null | col -bx | $bat_cmd --language=man --style=header,grid --color=always --line-range=:40 --wrap=never 2>/dev/null
+                            # 显示完整的 man 页面内容，不限制行数
+                            man \$section \$cmd 2>/dev/null | col -bx | $bat_cmd --language=man --style=header,numbers --color=always --wrap=never --paging=never 2>/dev/null
                         else
                             echo '❌ Manual page not available for '\$cmd'('\$section')'
                             echo
@@ -142,14 +144,21 @@ if command -v bat >/dev/null 2>&1 || command -v batcat >/dev/null 2>&1; then
                             echo '   • The manual page is not installed'
                             echo '   • The section number is incorrect'
                             echo '   • The command name has changed'
+                            echo
+                            echo '🔍 Try searching for similar commands:'
+                            echo '   • Use different section numbers'
+                            echo '   • Check for alternative command names'
+                            echo '   • Use apropos to find related commands'
                         fi
                     " \
-                    --bind="ctrl-/:change-preview-window(down,60%,border-top|right,55%,border-left|hidden)" \
+                    --bind="ctrl-/:change-preview-window(down,70%,border-top|right,60%,border-left|hidden)" \
+                    --bind="ctrl-u:preview-page-up" \
+                    --bind="ctrl-d:preview-page-down" \
                     --bind="ctrl-y:execute-silent(echo {} | awk '{print \$1}' | pbcopy)" \
                     --bind="alt-a:select-all" \
                     --bind="alt-d:deselect-all" \
-                    --bind="ctrl-r:reload(man -k . 2>/dev/null | awk '{match(\$0, /^([^(]+)\(([^)]+)\)(.*)/, arr); if (arr[1] && arr[2] && arr[3]) {cmd = arr[1]; section = arr[2]; desc = arr[3]; gsub(/^[ \t-]+/, \"\", desc); printf \"%-25s (%s) %s\\n\", cmd, section, desc}}' | sort -k1,1)" \
-                    --header="📖 Man Pages | ENTER: 打开 | CTRL-/: 切换预览 | CTRL-Y: 复制命令名 | CTRL-R: 刷新")
+                    --bind="ctrl-r:reload(man -k . 2>/dev/null | sed 's/^\([^(]*\)(\([^)]*\)) *- *\(.*\)/\1 (\2) \3/' | awk '{cmd = \$1; section = \$2; desc = \"\"; for(i=3; i<=NF; i++) desc = desc \" \" \$i; gsub(/^[ \t]+/, \"\", desc); printf \"%-25s %s%s\\n\", cmd, section, desc}' | sort -k1,1)" \
+                    --header="📖 Man Pages | ENTER: 打开 | CTRL-/: 切换预览 | CTRL-U/D: 预览滚动 | CTRL-Y: 复制 | CTRL-R: 刷新")
 
             if [[ -n "$selected" ]]; then
                 # 提取命令名和章节
@@ -216,7 +225,8 @@ if command -v bat >/dev/null 2>&1 || command -v batcat >/dev/null 2>&1; then
                         echo '📖 '\$cmd'($section) - Section $section'
                         echo '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
                         if man $section \$cmd >/dev/null 2>&1; then
-                            man $section \$cmd 2>/dev/null | col -bx | $bat_cmd --language=man --style=header --color=always --line-range=:35 --wrap=never 2>/dev/null
+                            # 显示更多内容用于章节浏览
+                            man $section \$cmd 2>/dev/null | col -bx | $bat_cmd --language=man --style=header --color=always --line-range=:80 --wrap=never 2>/dev/null
                         else
                             echo '❌ Manual page not available for '\$cmd' in section $section'
                         fi
