@@ -254,6 +254,87 @@ def install_thefuck_special() -> bool:
     return True
 
 
+def install_ripgrep_special() -> bool:
+    """
+    特殊安装ripgrep工具
+    优先使用包管理器，失败时从GitHub下载.deb包
+
+    Returns:
+        bool: 安装是否成功
+    """
+    from common import log_info, log_success, log_error, log_warn
+
+    try:
+        # 检查是否已安装
+        if subprocess.run(['which', 'rg'], capture_output=True).returncode == 0:
+            log_success("ripgrep 已安装，跳过")
+            return True
+
+        log_info("正在安装 ripgrep...")
+        sudo_cmd = check_root()
+
+        # 方法1: 尝试使用包管理器安装
+        log_info("  尝试通过包管理器安装...")
+        cmd = f"{sudo_cmd} apt install -y ripgrep".strip()
+        result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=300)
+
+        if result.returncode == 0:
+            log_success("通过包管理器安装 ripgrep 成功")
+            return True
+
+        # 方法2: 从GitHub下载.deb包安装
+        log_info("  包管理器安装失败，尝试从GitHub下载...")
+
+        # 创建临时目录
+        with tempfile.TemporaryDirectory() as temp_dir:
+            deb_file = os.path.join(temp_dir, "ripgrep_14.1.0-1_amd64.deb")
+
+            # 下载.deb包 (修正版本号不一致问题)
+            log_info("  下载 ripgrep .deb 包...")
+            download_cmd = f"curl -L -o {deb_file} https://github.com/BurntSushi/ripgrep/releases/download/14.1.0/ripgrep_14.1.0-1_amd64.deb"
+            download_result = subprocess.run(download_cmd, shell=True, capture_output=True, text=True, timeout=300)
+
+            if download_result.returncode != 0:
+                log_error("下载 ripgrep .deb 包失败")
+                log_error(f"错误信息: {download_result.stderr}")
+                return False
+
+            # 安装.deb包
+            log_info("  安装 ripgrep .deb 包...")
+            install_cmd = f"{sudo_cmd} dpkg -i {deb_file}".strip()
+            install_result = subprocess.run(install_cmd, shell=True, capture_output=True, text=True, timeout=300)
+
+            if install_result.returncode != 0:
+                log_warn("dpkg 安装可能有依赖问题，尝试修复...")
+                # 尝试修复依赖
+                fix_cmd = f"{sudo_cmd} apt install -f -y".strip()
+                subprocess.run(fix_cmd, shell=True, capture_output=True, text=True, timeout=300)
+
+                # 再次尝试安装
+                install_result = subprocess.run(install_cmd, shell=True, capture_output=True, text=True, timeout=300)
+
+        # 验证安装
+        if subprocess.run(['which', 'rg'], capture_output=True).returncode == 0:
+            # 获取版本信息
+            version_result = subprocess.run(['rg', '--version'], capture_output=True, text=True)
+            if version_result.returncode == 0:
+                version_line = version_result.stdout.split('\n')[0]
+                log_success(f"ripgrep 安装成功: {version_line}")
+            else:
+                log_success("ripgrep 安装成功")
+            return True
+        else:
+            log_error("ripgrep 安装失败，无法找到 rg 命令")
+            return False
+
+    except subprocess.TimeoutExpired:
+        log_error("ripgrep 安装超时")
+        return False
+    except Exception as e:
+        log_error(f"ripgrep 安装过程中发生错误: {str(e)}")
+        return False
+
+
 def install_package_with_progress(package_name: str, package_desc: str,
                                 current: int, total: int) -> bool:
     """
@@ -621,6 +702,13 @@ def install_common_software() -> bool:
             elif package_name == "tshark":
                 log_info(f"安装 ({current_num}/{total_count}): {package_desc} ({package_name})")
                 if install_tshark_special():
+                    success_count += 1
+                else:
+                    failed_count += 1
+                    failed_packages.append((package_name, package_desc))
+            elif package_name == "ripgrep":
+                log_info(f"安装 ({current_num}/{total_count}): {package_desc} ({package_name})")
+                if install_ripgrep_special():
                     success_count += 1
                 else:
                     failed_count += 1

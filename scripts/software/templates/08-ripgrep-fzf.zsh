@@ -3,11 +3,11 @@
 if command -v rg >/dev/null 2>&1 && command -v fzf >/dev/null 2>&1; then
     # 确定使用的bat命令
     if command -v batcat >/dev/null 2>&1; then
-        local bat_cmd='batcat'
+        bat_cmd='batcat'
     elif command -v bat >/dev/null 2>&1; then
-        local bat_cmd='bat'
+        bat_cmd='bat'
     else
-        local bat_cmd='cat'
+        bat_cmd='cat'
     fi
 
     # 交互式ripgrep搜索 - 主要功能
@@ -28,7 +28,7 @@ if command -v rg >/dev/null 2>&1 && command -v fzf >/dev/null 2>&1; then
             --preview=\"$bat_cmd --color=always {1} --highlight-line {2}\"
             --preview-window=\"up,60%,border-bottom,+{2}+3/3,~3\"
         "
-        
+
         FZF_DEFAULT_OPTS="$fzf_default_opts" fzf
     }
 
@@ -58,10 +58,10 @@ if command -v rg >/dev/null 2>&1 && command -v fzf >/dev/null 2>&1; then
             echo "支持的文件类型: py, js, css, html, md, json, yaml, sh"
             return 1
         fi
-        
+
         local query="$1"
         local types=("py" "js" "css" "html" "md" "json" "yaml" "sh")
-        
+
         for type in "${types[@]}"; do
             echo "=== $type 文件 ==="
             rg --type "$type" --color=always "$query" | head -5
@@ -75,22 +75,22 @@ if command -v rg >/dev/null 2>&1 && command -v fzf >/dev/null 2>&1; then
             echo "用法: rgs <搜索词> <替换词> [文件模式]"
             return 1
         fi
-        
+
         local search="$1"
         local replace="$2"
         local pattern="${3:-.}"
-        
+
         echo "搜索替换预览:"
         echo "搜索: $search"
         echo "替换: $replace"
         echo "范围: $pattern"
         echo
-        
+
         rg --color=always "$search" "$pattern" | \
         fzf --ansi \
             --preview="echo '原文:'; echo {}; echo; echo '替换后:'; echo {} | sed 's/$search/$replace/g'" \
             --header="预览搜索替换结果 | ENTER: 执行替换"
-        
+
         read -q "REPLY?确认执行替换操作? (y/N): "
         if [[ $REPLY =~ ^[Yy]$ ]]; then
             rg --files-with-matches "$search" "$pattern" | xargs sed -i "s/$search/$replace/g"
