@@ -60,7 +60,7 @@ fi
 # bat (cat的增强版) 核心配置
 # =============================================================================
 
-if command -v bat >/dev/null 2>&1; then
+if command -v bat >/dev/null 2>&1 || command -v batcat >/dev/null 2>&1; then
     # bat 环境变量配置
     export BAT_STYLE="numbers,changes,header,grid"
     export BAT_THEME="OneHalfDark"
@@ -90,7 +90,7 @@ if command -v fd >/dev/null 2>&1; then
     alias fds='fd --type s'                   # 搜索符号链接
 
     # fd + bat 集成：批量查看搜索结果
-    if command -v bat >/dev/null 2>&1; then
+    if command -v bat >/dev/null 2>&1 || command -v batcat >/dev/null 2>&1; then
         # 搜索并用 bat 查看所有匹配的文件
         fdbat() {
             if [[ $# -eq 0 ]]; then
@@ -103,11 +103,22 @@ if command -v fd >/dev/null 2>&1; then
 
         # 搜索并预览文件内容
         fdpreview() {
+            # 确保bat命令可用
+            local bat_cmd
+            if command -v batcat >/dev/null 2>&1; then
+                bat_cmd='batcat'
+            elif command -v bat >/dev/null 2>&1; then
+                bat_cmd='bat'
+            else
+                echo "错误：未找到bat工具，请先安装"
+                return 1
+            fi
+
             if [[ $# -eq 0 ]]; then
                 echo "用法: fdpreview <搜索模式> [路径]"
                 return 1
             fi
-            fd "$@" --type f -x bat --color=always --style=header,grid --line-range=:50
+            fd "$@" --type f -x "$bat_cmd" --color=always --style=header,grid --line-range=:50
         }
     fi
 fi
@@ -185,13 +196,29 @@ if command -v fzf >/dev/null 2>&1; then
     fi
 
     # fzf + bat 集成：带语法高亮的文件预览
-    if command -v bat >/dev/null 2>&1; then
-        export FZF_CTRL_T_OPTS="--preview 'bat --color=always --style=numbers --line-range=:500 {}'"
+    if command -v bat >/dev/null 2>&1 || command -v batcat >/dev/null 2>&1; then
+        # 确定bat命令并设置预览选项
+        if command -v batcat >/dev/null 2>&1; then
+            export FZF_CTRL_T_OPTS="--preview 'batcat --color=always --style=numbers --line-range=:500 {}'"
+        else
+            export FZF_CTRL_T_OPTS="--preview 'bat --color=always --style=numbers --line-range=:500 {}'"
+        fi
 
         # 高级文件搜索和编辑
         fzf-edit() {
+            # 确保bat命令可用
+            local bat_cmd
+            if command -v batcat >/dev/null 2>&1; then
+                bat_cmd='batcat'
+            elif command -v bat >/dev/null 2>&1; then
+                bat_cmd='bat'
+            else
+                echo "错误：未找到bat工具，请先安装"
+                return 1
+            fi
+
             local file
-            file=$(fzf --preview 'bat --color=always --style=numbers,changes --line-range=:500 {}' \
+            file=$(fzf --preview "$bat_cmd --color=always --style=numbers,changes --line-range=:500 {}" \
                       --preview-window=right:60%:wrap \
                       --bind='ctrl-/:toggle-preview,ctrl-u:preview-page-up,ctrl-d:preview-page-down')
             if [[ -n "$file" ]]; then
@@ -201,12 +228,23 @@ if command -v fzf >/dev/null 2>&1; then
 
         # 搜索文件内容并预览
         fzf-content() {
+            # 确保bat命令可用
+            local bat_cmd
+            if command -v batcat >/dev/null 2>&1; then
+                bat_cmd='batcat'
+            elif command -v bat >/dev/null 2>&1; then
+                bat_cmd='bat'
+            else
+                echo "错误：未找到bat工具，请先安装"
+                return 1
+            fi
+
             if command -v rg >/dev/null 2>&1; then
                 rg --color=always --line-number --no-heading --smart-case "${*:-}" |
                 fzf --ansi \
                     --color "hl:-1:underline,hl+:-1:underline:reverse" \
                     --delimiter : \
-                    --preview 'bat --color=always {1} --highlight-line {2}' \
+                    --preview "$bat_cmd --color=always {1} --highlight-line {2}" \
                     --preview-window 'up,60%,border-bottom,+{2}+3/3,~3' \
                     --bind 'enter:become(vim {1} +{2})'
             else
@@ -216,7 +254,18 @@ if command -v fzf >/dev/null 2>&1; then
 
         # 查看 bat 主题预览
         fzf-bat-themes() {
-            bat --list-themes | fzf --preview="bat --theme={} --color=always ~/.bashrc || bat --theme={} --color=always /etc/passwd"
+            # 确保bat命令可用
+            local bat_cmd
+            if command -v batcat >/dev/null 2>&1; then
+                bat_cmd='batcat'
+            elif command -v bat >/dev/null 2>&1; then
+                bat_cmd='bat'
+            else
+                echo "错误：未找到bat工具，请先安装"
+                return 1
+            fi
+
+            $bat_cmd --list-themes | fzf --preview="$bat_cmd --theme={} --color=always ~/.bashrc || $bat_cmd --theme={} --color=always /etc/passwd"
         }
     fi
 
@@ -280,6 +329,17 @@ if command -v fzf >/dev/null 2>&1; then
 
     # 单键切换模式 - 基于文档的transform示例
     fzf-toggle-mode() {
+        # 确保bat命令可用
+        local bat_cmd
+        if command -v batcat >/dev/null 2>&1; then
+            bat_cmd='batcat'
+        elif command -v bat >/dev/null 2>&1; then
+            bat_cmd='bat'
+        else
+            echo "错误：未找到bat工具，请先安装"
+            return 1
+        fi
+
         if command -v fd >/dev/null 2>&1; then
             fd --type file |
             fzf --prompt 'Files> ' \
@@ -287,7 +347,7 @@ if command -v fzf >/dev/null 2>&1; then
                 --bind 'ctrl-t:transform:[[ ! $FZF_PROMPT =~ Files ]] &&
                         echo "change-prompt(Files> )+reload(fd --type file)" ||
                         echo "change-prompt(Directories> )+reload(fd --type directory)"' \
-                --preview '[[ $FZF_PROMPT =~ Files ]] && bat --color=always {} || tree -C {}'
+                --preview "[[ \$FZF_PROMPT =~ Files ]] && $bat_cmd --color=always {} || tree -C {}"
         else
             find . -type f |
             fzf --prompt 'Files> ' \
@@ -335,9 +395,20 @@ EOF
     # 基于官方ADVANCED.md的高级Ripgrep集成功能
     # =============================================================================
 
-    if command -v bat >/dev/null 2>&1; then
+    if command -v bat >/dev/null 2>&1 || command -v batcat >/dev/null 2>&1; then
         # 1. 使用fzf作为Ripgrep的二级过滤器 - 基于文档示例
         rfv() {
+            # 确保bat命令可用
+            local bat_cmd
+            if command -v batcat >/dev/null 2>&1; then
+                bat_cmd='batcat'
+            elif command -v bat >/dev/null 2>&1; then
+                bat_cmd='bat'
+            else
+                echo "错误：未找到bat工具，请先安装"
+                return 1
+            fi
+
             if [[ $# -eq 0 ]]; then
                 echo "用法: rfv <搜索模式>"
                 echo "功能: 使用Ripgrep搜索，然后用fzf交互式过滤"
@@ -348,26 +419,48 @@ EOF
             fzf --ansi \
                 --color "hl:-1:underline,hl+:-1:underline:reverse" \
                 --delimiter : \
-                --preview 'bat --color=always {1} --highlight-line {2}' \
+                --preview "$bat_cmd --color=always {1} --highlight-line {2}" \
                 --preview-window 'up,60%,border-bottom,+{2}+3/3,~3' \
                 --bind 'enter:become(vim {1} +{2})'
         }
 
         # 2. 交互式Ripgrep启动器 - 基于文档示例
         rgi() {
+            # 确保bat命令可用
+            local bat_cmd
+            if command -v batcat >/dev/null 2>&1; then
+                bat_cmd='batcat'
+            elif command -v bat >/dev/null 2>&1; then
+                bat_cmd='bat'
+            else
+                echo "错误：未找到bat工具，请先安装"
+                return 1
+            fi
+
             local RG_PREFIX="rg --column --line-number --no-heading --color=always --smart-case "
             local INITIAL_QUERY="${*:-}"
             fzf --ansi --disabled --query "$INITIAL_QUERY" \
                 --bind "start:reload:$RG_PREFIX {q}" \
                 --bind "change:reload:sleep 0.1; $RG_PREFIX {q} || true" \
                 --delimiter : \
-                --preview 'bat --color=always {1} --highlight-line {2}' \
+                --preview "$bat_cmd --color=always {1} --highlight-line {2}" \
                 --preview-window 'up,60%,border-bottom,+{2}+3/3,~3' \
                 --bind 'enter:become(vim {1} +{2})'
         }
 
         # 3. 双阶段搜索：Ripgrep + fzf切换 - 基于文档示例
         rg2() {
+            # 确保bat命令可用
+            local bat_cmd
+            if command -v batcat >/dev/null 2>&1; then
+                bat_cmd='batcat'
+            elif command -v bat >/dev/null 2>&1; then
+                bat_cmd='bat'
+            else
+                echo "错误：未找到bat工具，请先安装"
+                return 1
+            fi
+
             local RG_PREFIX="rg --column --line-number --no-heading --color=always --smart-case "
             local INITIAL_QUERY="${*:-}"
             fzf --ansi --disabled --query "$INITIAL_QUERY" \
@@ -377,13 +470,24 @@ EOF
                 --color "hl:-1:underline,hl+:-1:underline:reverse" \
                 --prompt '1. ripgrep> ' \
                 --delimiter : \
-                --preview 'bat --color=always {1} --highlight-line {2}' \
+                --preview "$bat_cmd --color=always {1} --highlight-line {2}" \
                 --preview-window 'up,60%,border-bottom,+{2}+3/3,~3' \
                 --bind 'enter:become(vim {1} +{2})'
         }
 
         # 4. Ripgrep和fzf模式切换 - 基于文档示例
         rgs() {
+            # 确保bat命令可用
+            local bat_cmd
+            if command -v batcat >/dev/null 2>&1; then
+                bat_cmd='batcat'
+            elif command -v bat >/dev/null 2>&1; then
+                bat_cmd='bat'
+            else
+                echo "错误：未找到bat工具，请先安装"
+                return 1
+            fi
+
             local RG_PREFIX="rg --column --line-number --no-heading --color=always --smart-case "
             local INITIAL_QUERY="${*:-}"
 
@@ -402,7 +506,7 @@ EOF
                 --prompt '1. ripgrep> ' \
                 --delimiter : \
                 --header '╱ CTRL-R (ripgrep mode) ╱ CTRL-F (fzf mode) ╱' \
-                --preview 'bat --color=always {1} --highlight-line {2}' \
+                --preview "$bat_cmd --color=always {1} --highlight-line {2}" \
                 --preview-window 'up,60%,border-bottom,+{2}+3/3,~3' \
                 --bind 'enter:become(vim {1} +{2})' \
                 --bind "ctrl-c:execute(rm -f $tmp_r $tmp_f)"
@@ -413,6 +517,17 @@ EOF
 
         # 传统batgrep功能保持兼容
         batgrep() {
+            # 确保bat命令可用
+            local bat_cmd
+            if command -v batcat >/dev/null 2>&1; then
+                bat_cmd='batcat'
+            elif command -v bat >/dev/null 2>&1; then
+                bat_cmd='bat'
+            else
+                echo "错误：未找到bat工具，请先安装"
+                return 1
+            fi
+
             if [[ $# -eq 0 ]]; then
                 echo "用法: batgrep <搜索模式> [路径]"
                 echo "示例: batgrep 'function' src/"
@@ -424,13 +539,24 @@ EOF
             rg --color=always --line-number --no-heading --smart-case "$pattern" "$@" |
             while IFS=: read -r file line content; do
                 echo "==> $file:$line <=="
-                bat --color=always --highlight-line="$line" --line-range="$((line-3)):$((line+3))" "$file" 2>/dev/null || echo "$content"
+                "$bat_cmd" --color=always --highlight-line="$line" --line-range="$((line-3)):$((line+3))" "$file" 2>/dev/null || echo "$content"
                 echo
             done
         }
 
         # 交互式搜索：搜索后可以选择文件查看
         rg-fzf() {
+            # 确保bat命令可用
+            local bat_cmd
+            if command -v batcat >/dev/null 2>&1; then
+                bat_cmd='batcat'
+            elif command -v bat >/dev/null 2>&1; then
+                bat_cmd='bat'
+            else
+                echo "错误：未找到bat工具，请先安装"
+                return 1
+            fi
+
             if [[ $# -eq 0 ]]; then
                 echo "用法: rg-fzf <搜索模式>"
                 return 1
@@ -440,9 +566,9 @@ EOF
             fzf --ansi \
                 --color "hl:-1:underline,hl+:-1:underline:reverse" \
                 --delimiter : \
-                --preview 'bat --color=always {1} --highlight-line {2} --line-range {2}:' \
+                --preview "$bat_cmd --color=always {1} --highlight-line {2} --line-range {2}:" \
                 --preview-window 'up,60%,border-bottom,+{2}+3/3,~3' \
-                --bind 'enter:become(bat --paging=always {1} --highlight-line {2})'
+                --bind "enter:become($bat_cmd --paging=always {1} --highlight-line {2})"
         }
     fi
 
@@ -456,7 +582,7 @@ fi
 # git + bat 集成：增强的 Git 操作
 # =============================================================================
 
-if command -v git >/dev/null 2>&1 && command -v bat >/dev/null 2>&1; then
+if command -v git >/dev/null 2>&1 && (command -v bat >/dev/null 2>&1 || command -v batcat >/dev/null 2>&1); then
     # git show 与 bat 集成
     git-show-bat() {
         if [[ $# -eq 0 ]]; then
@@ -519,6 +645,17 @@ if command -v git >/dev/null 2>&1 && command -v bat >/dev/null 2>&1; then
 
     # Git分支交互选择
     fzf-git-branch() {
+        # 确保bat命令可用
+        local bat_cmd
+        if command -v batcat >/dev/null 2>&1; then
+            bat_cmd='batcat'
+        elif command -v bat >/dev/null 2>&1; then
+            bat_cmd='bat'
+        else
+            echo "错误：未找到bat工具，请先安装"
+            return 1
+        fi
+
         git branch -a --color=always |
         grep -v '/HEAD\\s' |
         fzf --ansi \
@@ -529,35 +666,57 @@ if command -v git >/dev/null 2>&1 && command -v bat >/dev/null 2>&1; then
             --bind 'ctrl-o:execute(git checkout $(sed s/^..// <<< {} | cut -d" " -f1))' \
             --bind 'ctrl-d:execute(git branch -d $(sed s/^..// <<< {} | cut -d" " -f1))' \
             --bind 'ctrl-m:execute(git merge $(sed s/^..// <<< {} | cut -d" " -f1))' \
-            --bind 'enter:execute(git log --oneline --graph --color=always $(sed s/^..// <<< {} | cut -d" " -f1) | bat --language=gitlog --paging=always)'
+            --bind "enter:execute(git log --oneline --graph --color=always \$(sed s/^..// <<< {} | cut -d\" \" -f1) | $bat_cmd --language=gitlog --paging=always)"
     }
 
     # Git提交哈希交互选择
     fzf-git-commits() {
+        # 确保bat命令可用
+        local bat_cmd
+        if command -v batcat >/dev/null 2>&1; then
+            bat_cmd='batcat'
+        elif command -v bat >/dev/null 2>&1; then
+            bat_cmd='bat'
+        else
+            echo "错误：未找到bat工具，请先安装"
+            return 1
+        fi
+
         git log --color=always --format="%C(auto)%h%d %s %C(black)%C(bold)%cr" "$@" |
         fzf --ansi \
             --no-sort \
             --reverse \
             --multi \
-            --preview 'git show --color=always {1} | bat --language=diff' \
+            --preview "git show --color=always {1} | $bat_cmd --language=diff" \
             --preview-window 'right:60%:wrap' \
             --header 'CTRL-S: Show | CTRL-D: Diff | CTRL-R: Reset | Enter: Show details' \
-            --bind 'ctrl-s:execute(git show {1} | bat --language=diff --paging=always)' \
-            --bind 'ctrl-d:execute(git diff {1}^ {1} | bat --language=diff --paging=always)' \
+            --bind "ctrl-s:execute(git show {1} | $bat_cmd --language=diff --paging=always)" \
+            --bind "ctrl-d:execute(git diff {1}^ {1} | $bat_cmd --language=diff --paging=always)" \
             --bind 'ctrl-r:execute(git reset --hard {1})' \
-            --bind 'enter:execute(git show --stat --color=always {1} | bat --language=gitlog --paging=always)'
+            --bind "enter:execute(git show --stat --color=always {1} | $bat_cmd --language=gitlog --paging=always)"
     }
 
     # Git标签交互选择
     fzf-git-tags() {
+        # 确保bat命令可用
+        local bat_cmd
+        if command -v batcat >/dev/null 2>&1; then
+            bat_cmd='batcat'
+        elif command -v bat >/dev/null 2>&1; then
+            bat_cmd='bat'
+        else
+            echo "错误：未找到bat工具，请先安装"
+            return 1
+        fi
+
         git tag --sort=-version:refname |
         fzf --multi \
-            --preview 'git show --color=always {} | bat --language=diff' \
+            --preview "git show --color=always {} | $bat_cmd --language=diff" \
             --preview-window 'right:60%:wrap' \
             --header 'CTRL-O: Checkout | CTRL-D: Delete | Enter: Show' \
             --bind 'ctrl-o:execute(git checkout {})' \
             --bind 'ctrl-d:execute(git tag -d {})' \
-            --bind 'enter:execute(git show --color=always {} | bat --language=diff --paging=always)'
+            --bind "enter:execute(git show --color=always {} | $bat_cmd --language=diff --paging=always)"
     }
 
     # Git别名 - 包含新的交互功能
@@ -574,7 +733,7 @@ fi
 # tail + bat 集成：日志监控与语法高亮
 # =============================================================================
 
-if command -v bat >/dev/null 2>&1; then
+if command -v bat >/dev/null 2>&1 || command -v batcat >/dev/null 2>&1; then
     # tail -f 与 bat 集成：实时日志监控
     tailbat() {
         if [[ $# -eq 0 ]]; then
@@ -617,6 +776,17 @@ if command -v bat >/dev/null 2>&1; then
 
     # 交互式日志文件选择和监控
     fzf-log-tail() {
+        # 确保bat命令可用
+        local bat_cmd
+        if command -v batcat >/dev/null 2>&1; then
+            bat_cmd='batcat'
+        elif command -v bat >/dev/null 2>&1; then
+            bat_cmd='bat'
+        else
+            echo "错误：未找到bat工具，请先安装"
+            return 1
+        fi
+
         local log_dirs=("/var/log" "/var/log/nginx" "/var/log/apache2" "$HOME/.local/share/logs")
         local log_files
 
@@ -629,22 +799,33 @@ if command -v bat >/dev/null 2>&1; then
         fi
 
         echo "$log_files" |
-        fzf --preview 'tail -50 {} | bat --color=always -l log' \
+        fzf --preview "tail -50 {} | $bat_cmd --color=always -l log" \
             --preview-window 'right:60%:wrap' \
             --header 'CTRL-T: Tail -f | CTRL-L: Less | Enter: View last 100 lines' \
-            --bind 'ctrl-t:execute(tail -f {} | bat --paging=never -l log)' \
-            --bind 'ctrl-l:execute(bat --paging=always -l log {})' \
-            --bind 'enter:execute(tail -100 {} | bat --paging=always -l log)'
+            --bind "ctrl-t:execute(tail -f {} | $bat_cmd --paging=never -l log)" \
+            --bind "ctrl-l:execute($bat_cmd --paging=always -l log {})" \
+            --bind "enter:execute(tail -100 {} | $bat_cmd --paging=always -l log)"
     }
 
     # 多日志文件并行监控
     fzf-multi-log-tail() {
+        # 确保bat命令可用
+        local bat_cmd
+        if command -v batcat >/dev/null 2>&1; then
+            bat_cmd='batcat'
+        elif command -v bat >/dev/null 2>&1; then
+            bat_cmd='bat'
+        else
+            echo "错误：未找到bat工具，请先安装"
+            return 1
+        fi
+
         local log_dirs=("/var/log" "/var/log/nginx" "/var/log/apache2")
         local selected_logs
 
         selected_logs=$(find "${log_dirs[@]}" -name "*.log" -o -name "syslog*" 2>/dev/null |
                        fzf --multi \
-                           --preview 'tail -20 {} | bat --color=always -l log' \
+                           --preview "tail -20 {} | $bat_cmd --color=always -l log" \
                            --preview-window 'right:50%:wrap' \
                            --header 'Select multiple log files to monitor (TAB to select)')
 
@@ -661,13 +842,24 @@ if command -v bat >/dev/null 2>&1; then
                 # 简单的并行tail实现
                 echo "$selected_logs" | while read -r logfile; do
                     (echo "==> $logfile <=="; tail -f "$logfile" | sed "s/^/[$logfile] /") &
-                done | bat --paging=never -l log
+                done | "$bat_cmd" --paging=never -l log
             fi
         fi
     }
 
     # 日志级别过滤监控
     fzf-log-level() {
+        # 确保bat命令可用
+        local bat_cmd
+        if command -v batcat >/dev/null 2>&1; then
+            bat_cmd='batcat'
+        elif command -v bat >/dev/null 2>&1; then
+            bat_cmd='bat'
+        else
+            echo "错误：未找到bat工具，请先安装"
+            return 1
+        fi
+
         if [[ $# -eq 0 ]]; then
             echo "用法: fzf-log-level <日志文件>"
             return 1
@@ -677,10 +869,10 @@ if command -v bat >/dev/null 2>&1; then
         local levels=("ERROR" "WARN" "INFO" "DEBUG" "TRACE" "ALL")
 
         printf '%s\n' "${levels[@]}" |
-        fzf --preview "grep -i {} '$logfile' | tail -50 | bat --color=always -l log" \
+        fzf --preview "grep -i {} '$logfile' | tail -50 | $bat_cmd --color=always -l log" \
             --preview-window 'down:60%:wrap' \
             --header 'Select log level to monitor' \
-            --bind "enter:execute(if [[ {} == 'ALL' ]]; then tail -f '$logfile' | bat --paging=never -l log; else tail -f '$logfile' | grep -i {} | bat --paging=never -l log; fi)"
+            --bind "enter:execute(if [[ {} == 'ALL' ]]; then tail -f '$logfile' | $bat_cmd --paging=never -l log; else tail -f '$logfile' | grep -i {} | $bat_cmd --paging=never -l log; fi)"
     }
 
     # 常用日志监控别名
@@ -696,7 +888,7 @@ fi
 # man + bat 集成：彩色 man 页面
 # =============================================================================
 
-if command -v bat >/dev/null 2>&1; then
+if command -v bat >/dev/null 2>&1 || command -v batcat >/dev/null 2>&1; then
     # 设置 MANPAGER 使用 bat 作为 man 页面的分页器
     export MANPAGER="sh -c 'awk '\''{gsub(/\\x1B\\[[0-9;]*m/, \"\", \\$0); gsub(/.\\x08/, \"\", \\$0); print}'\'' | bat -p -lman'"
 
@@ -785,16 +977,27 @@ search-all() {
         return 1
     fi
 
+    # 确保bat命令可用
+    local bat_cmd
+    if command -v batcat >/dev/null 2>&1; then
+        bat_cmd='batcat'
+    elif command -v bat >/dev/null 2>&1; then
+        bat_cmd='bat'
+    else
+        echo "错误：未找到bat工具，请先安装"
+        return 1
+    fi
+
     local pattern="$1"
     local path="${2:-.}"
 
     echo "==> 搜索文件名包含 '$pattern' 的文件 <=="
-    if command -v fd >/dev/null 2>&1 && command -v bat >/dev/null 2>&1; then
-        fd "$pattern" "$path" --type f -x bat --color=always --style=header --line-range=:10
+    if command -v fd >/dev/null 2>&1; then
+        fd "$pattern" "$path" --type f -x "$bat_cmd" --color=always --style=header --line-range=:10
     fi
 
     echo -e "\n==> 搜索文件内容包含 '$pattern' 的文件 <=="
-    if command -v rg >/dev/null 2>&1 && command -v bat >/dev/null 2>&1; then
+    if command -v rg >/dev/null 2>&1; then
         rg --color=always --line-number --no-heading "$pattern" "$path" | head -20
     fi
 }
