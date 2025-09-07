@@ -77,10 +77,16 @@ if command -v fzf >/dev/null 2>&1; then
         bat_cmd='cat'
     fi
 
-    if command -v fd >/dev/null 2>&1; then
-        fd_cmd='fd'
-    elif command -v fdfind >/dev/null 2>&1; then
+    # 优先检查实际的二进制文件，而不是别名
+    if command -v fdfind >/dev/null 2>&1; then
         fd_cmd='fdfind'
+    elif command -v fd >/dev/null 2>&1; then
+        # 检查是否是真正的 fd 二进制文件，而不是别名
+        if [[ "$(command -v fd)" != *"alias"* ]]; then
+            fd_cmd='fd'
+        else
+            fd_cmd='fdfind'
+        fi
     else
         fd_cmd='find'
     fi
@@ -144,6 +150,12 @@ if command -v fzf >/dev/null 2>&1; then
             *)            fzf --preview "$bat_cmd --color=always --style=numbers --line-range=:500 {}" --header '📄 选择文件' "$@" ;;
         esac
     }
+
+    # 确保环境变量在键绑定加载前设置
+    echo "🔧 FZF 配置已加载"
+    echo "   CTRL-T: 文件选择 (使用 $fd_cmd)"
+    echo "   ALT-C: 目录选择"
+    echo "   CTRL-R: 历史搜索"
 
     # fzf 键绑定加载
     if [[ -f /usr/share/doc/fzf/examples/key-bindings.zsh ]]; then
