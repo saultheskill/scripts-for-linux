@@ -218,8 +218,18 @@ test_git_integration() {
     (
         cd "$TEST_TEMP_DIR"
         source "$TEMPLATES_DIR/09-git-integration.zsh" 2>/dev/null
-        declare -f gco >/dev/null 2>&1 || exit 1
-        declare -f glog >/dev/null 2>&1 || exit 1
+        # 检查重命名后的函数
+        declare -f _git_checkout_interactive >/dev/null 2>&1 || exit 1
+        declare -f _git_log_interactive >/dev/null 2>&1 || exit 1
+        declare -f _git_status_interactive >/dev/null 2>&1 || exit 1
+        # 检查别名覆盖
+        alias gco | grep -q "_git_checkout_interactive" || exit 1
+        alias glog | grep -q "_git_log_interactive" || exit 1
+        alias gst | grep -q "_git_status_interactive" || exit 1
+        # 检查原始功能别名
+        alias gco-orig | grep -q "git checkout" || exit 1
+        alias glog-orig | grep -q "git log" || exit 1
+        alias gst-orig | grep -q "git status" || exit 1
     )
 }
 

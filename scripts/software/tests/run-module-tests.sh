@@ -322,8 +322,8 @@ run_module_tests() {
     # 模块09: git集成测试
     run_test "模块09-git集成-加载测试" "test_module_loading 09-git-integration.zsh"
     run_test "模块09-git集成-依赖测试" "test_tool_dependencies 09-git-integration.zsh git fzf bat"
-    run_test "模块09-git集成-函数测试" "test_functions 09-git-integration.zsh gco glog gst gstash gremote gfh gblame gdiff"
-    run_test "模块09-git集成-别名测试" "test_aliases 09-git-integration.zsh gbr glg gstat gsh grm gfhist gbl gdf"
+    run_test "模块09-git集成-函数测试" "test_functions 09-git-integration.zsh _git_checkout_interactive _git_log_interactive _git_status_interactive gstash gremote gfh gblame gdiff git-alias-status"
+    run_test "模块09-git集成-别名测试" "test_aliases 09-git-integration.zsh gco glog gst gbr glg gstat gsh grm gfhist gbl gdf gco-orig glog-orig gst-orig gbl-orig"
 
     # 模块09-fzf-git-advanced: fzf-git高级集成测试
     run_test "模块09-fzf-git高级-加载测试" "test_module_loading 09-fzf-git-advanced.zsh"

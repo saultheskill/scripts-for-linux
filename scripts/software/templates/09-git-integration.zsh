@@ -1,4 +1,23 @@
-# git + fzf + bat集成功能 - 美化版
+# =============================================================================
+# Git + FZF + Bat 集成功能 - 美化版
+# =============================================================================
+#
+# 功能说明：
+# - 提供交互式的 Git 操作界面，使用 fzf 进行选择和预览
+# - 使用 bat 进行语法高亮和美化显示
+# - 覆盖 Oh My Zsh 的部分 Git 别名，提供增强功能
+#
+# 别名覆盖策略：
+# - gco:  git checkout -> 交互式分支切换
+# - glog: git log --oneline --decorate --graph -> 交互式提交历史浏览
+# - gst:  git status -> 交互式文件状态管理
+# - gbl:  git blame -w -> 交互式 blame 浏览
+#
+# 原始功能保留：
+# - 所有被覆盖的原始功能都通过 *-orig 别名保留
+# - 例如：gco-orig, glog-orig, gst-orig, gbl-orig
+#
+# =============================================================================
 
 if command -v git >/dev/null 2>&1 && command -v fzf >/dev/null 2>&1; then
     # 确定使用的bat命令
@@ -31,7 +50,7 @@ if command -v git >/dev/null 2>&1 && command -v fzf >/dev/null 2>&1; then
         --prompt 🔍\  --pointer ▶\  --marker ✓\ "
 
     # Git分支选择和切换 - 美化版
-    gco() {
+    _git_checkout_interactive() {
         local branch
         branch=$(git branch -a --color=always | grep -v '/HEAD\s' | \
         fzf --ansi $fzf_git_opts \
@@ -56,7 +75,7 @@ if command -v git >/dev/null 2>&1 && command -v fzf >/dev/null 2>&1; then
     }
 
     # Git提交历史浏览 - 美化版
-    glog() {
+    _git_log_interactive() {
         git log --graph --color=always \
             --format="%C(green)%C(bold)%cd %C(auto)%h%d %s %C(blue)(%an)" --date=short "$@" | \
         fzf --ansi --no-sort --reverse --tiebreak=index $fzf_git_opts \
@@ -85,7 +104,7 @@ FZF-EOF"
     }
 
     # Git文件状态查看和操作 - 美化版
-    gst() {
+    _git_status_interactive() {
         git status --porcelain | \
         fzf --multi --ansi $fzf_git_opts \
             --preview "
@@ -221,13 +240,60 @@ FZF-EOF"
         fi
     }
 
-    # 别名
-    alias gbr='gco'         # 分支切换
-    alias glg='glog'        # 提交历史
-    alias gstat='gst'       # 文件状态
+    # =============================================================================
+    # Git 别名覆盖配置 - 替代 Oh My Zsh 默认别名
+    # =============================================================================
+
+    # 主要功能别名（覆盖 Oh My Zsh 默认别名）
+    # 注意：需要先取消现有别名，然后重新定义为我们的函数
+    unalias gco 2>/dev/null; alias gco='_git_checkout_interactive'
+    unalias glog 2>/dev/null; alias glog='_git_log_interactive'
+    unalias gst 2>/dev/null; alias gst='_git_status_interactive'
+
+    # 扩展功能别名
+    alias gbr='_git_checkout_interactive'    # 分支切换（别名）
+    alias glg='_git_log_interactive'         # 提交历史（别名）
+    alias gstat='_git_status_interactive'    # 文件状态（别名）
     alias gsh='gstash'      # stash管理
     alias grm='gremote'     # 远程分支
     alias gfhist='gfh'      # 文件历史
-    alias gbl='gblame'      # blame浏览
+    alias gbl='gblame'      # blame浏览（覆盖 Oh My Zsh 的 git blame -w）
     alias gdf='gdiff'       # 差异查看
+
+    # 为 Oh My Zsh 原始功能提供替代别名
+    alias gco-orig='git checkout'                           # 原始 checkout 命令
+    alias glog-orig='git log --oneline --decorate --graph'  # 原始 log 命令
+    alias gst-orig='git status'                             # 原始 status 命令
+    alias gbl-orig='git blame -w'                           # 原始 blame 命令
+
+    # Git 别名状态检查函数
+    git-alias-status() {
+        echo "📊 Git 别名覆盖状态:"
+        echo
+        echo "🔄 已覆盖的 Oh My Zsh 别名:"
+        echo "  gco  -> 交互式分支切换 (原: git checkout)"
+        echo "  glog -> 交互式提交历史 (原: git log --oneline --decorate --graph)"
+        echo "  gst  -> 交互式文件状态 (原: git status)"
+        echo "  gbl  -> 交互式 blame 浏览 (原: git blame -w)"
+        echo
+        echo "🔙 原始功能别名:"
+        echo "  gco-orig  -> git checkout"
+        echo "  glog-orig -> git log --oneline --decorate --graph"
+        echo "  gst-orig  -> git status"
+        echo "  gbl-orig  -> git blame -w"
+        echo
+        echo "🚀 增强功能别名:"
+        echo "  gsh      -> stash 管理"
+        echo "  grm      -> 远程分支管理"
+        echo "  gfh      -> 文件历史浏览"
+        echo "  gdiff    -> 交互式差异查看"
+        echo
+        echo "💡 运行 'alias | grep ^g' 查看所有 Git 别名"
+    }
+
+    # 显示加载信息
+    echo "🔄 Git 集成已加载 - 已覆盖 Oh My Zsh 默认别名"
+    echo "   主要覆盖: gco, glog, gst, gbl"
+    echo "   原始功能: gco-orig, glog-orig, gst-orig, gbl-orig"
+    echo "   运行 'git-alias-status' 查看详细状态"
 fi
