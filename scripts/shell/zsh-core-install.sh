@@ -669,7 +669,7 @@ alias grep='grep --color=auto'
 # =============================================================================
 
 # 编辑器
-export EDITOR='nano'
+export EDITOR='vim'
 command -v vim >/dev/null && export EDITOR='vim'
 command -v nvim >/dev/null && export EDITOR='nvim'
 
