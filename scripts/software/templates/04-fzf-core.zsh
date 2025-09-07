@@ -21,11 +21,14 @@ if command -v fzf >/dev/null 2>&1; then
         --bind='ctrl-s:toggle-sort'
         --bind='ctrl-r:reload(find . -type f)'
         --bind='alt-enter:print-query'
-        --color='fg:#d0d0d0,bg:#121212,hl:#5f87af'
-        --color='fg+:#d0d0d0,bg+:#262626,hl+:#5fd7ff'
-        --color='info:#afaf87,prompt:#d7005f,pointer:#af5fff'
-        --color='marker:#87ff00,spinner:#af5fff,header:#87afaf'
-        --color='border:#585858,preview-bg:#121212'
+        --color='fg:#CBE0F0,bg:#011628,hl:#B388FF'
+        --color='fg+:#CBE0F0,bg+:#143652,hl+:#B388FF'
+        --color='info:#06BCE4,prompt:#2CF9ED,pointer:#2CF9ED'
+        --color='marker:#A4E400,spinner:#FF8A65,header:#2CF9ED'
+        --color='border:#06BCE4,preview-bg:#011628,preview-border:#B388FF'
+        --prompt='🔍 '
+        --pointer='▶ '
+        --marker='✓ '
     "
 
     # tmux 集成配置 - 基于官方ADVANCED.md的tmux popup功能
@@ -64,6 +67,83 @@ if command -v fzf >/dev/null 2>&1; then
         export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_COMMAND"
         export FZF_ALT_C_COMMAND='fd --type d --hidden --follow --exclude .git --exclude node_modules --exclude .cache'
     fi
+
+    # 确定使用的工具命令
+    if command -v batcat >/dev/null 2>&1; then
+        bat_cmd='batcat'
+    elif command -v bat >/dev/null 2>&1; then
+        bat_cmd='bat'
+    else
+        bat_cmd='cat'
+    fi
+
+    if command -v fd >/dev/null 2>&1; then
+        fd_cmd='fd'
+    elif command -v fdfind >/dev/null 2>&1; then
+        fd_cmd='fdfind'
+    else
+        fd_cmd='find'
+    fi
+
+    # 增强的文件搜索配置
+    if [[ "$fd_cmd" != "find" ]]; then
+        export FZF_DEFAULT_COMMAND="$fd_cmd --hidden --strip-cwd-prefix --exclude .git"
+        export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_COMMAND"
+        export FZF_ALT_C_COMMAND="$fd_cmd --type=d --hidden --strip-cwd-prefix --exclude .git"
+    else
+        export FZF_DEFAULT_COMMAND="find . -type f -not -path '*/\.git/*'"
+        export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_COMMAND"
+        export FZF_ALT_C_COMMAND="find . -type d -not -path '*/\.git/*'"
+    fi
+
+    # CTRL-T 和 ALT-C 的预览配置
+    export FZF_CTRL_T_OPTS="--preview '$bat_cmd --color=always --style=numbers --line-range=:500 {}' --header '📁 选择文件 | CTRL-/: 切换预览'"
+
+    if command -v eza >/dev/null 2>&1; then
+        export FZF_ALT_C_OPTS="--preview 'eza --tree --color=always --icons=auto --level=2 {} | head -50' --header '📁 选择目录 | CTRL-/: 切换预览'"
+    elif command -v exa >/dev/null 2>&1; then
+        export FZF_ALT_C_OPTS="--preview 'exa --tree --color=always --level=2 {} | head -50' --header '📁 选择目录 | CTRL-/: 切换预览'"
+    else
+        export FZF_ALT_C_OPTS="--preview 'ls -la {} | head -20' --header '📁 选择目录 | CTRL-/: 切换预览'"
+    fi
+
+    # 自定义补全预览函数
+    _fzf_compgen_path() {
+        if [[ "$fd_cmd" != "find" ]]; then
+            $fd_cmd --hidden --exclude .git . "$1"
+        else
+            find "$1" -type f -not -path '*/\.git/*'
+        fi
+    }
+
+    _fzf_compgen_dir() {
+        if [[ "$fd_cmd" != "find" ]]; then
+            $fd_cmd --type=d --hidden --exclude .git . "$1"
+        else
+            find "$1" -type d -not -path '*/\.git/*'
+        fi
+    }
+
+    # 增强的命令特定预览
+    _fzf_comprun() {
+        local command=$1
+        shift
+
+        case "$command" in
+            cd)           fzf --preview "
+                            if command -v eza >/dev/null 2>&1; then
+                                eza --tree --color=always --icons=auto --level=2 {} | head -50
+                            elif command -v exa >/dev/null 2>&1; then
+                                exa --tree --color=always --level=2 {} | head -50
+                            else
+                                ls -la {} | head -20
+                            fi
+                          " --header '📁 选择目录' "$@" ;;
+            export|unset) fzf --preview "eval 'echo \\\$'{}" --header '🔧 环境变量' "$@" ;;
+            ssh)          fzf --preview 'dig {}' --header '🌐 SSH 连接' "$@" ;;
+            *)            fzf --preview "$bat_cmd --color=always --style=numbers --line-range=:500 {}" --header '📄 选择文件' "$@" ;;
+        esac
+    }
 
     # fzf 键绑定加载
     if [[ -f /usr/share/doc/fzf/examples/key-bindings.zsh ]]; then

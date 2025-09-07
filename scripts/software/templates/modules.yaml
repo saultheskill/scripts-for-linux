@@ -26,6 +26,12 @@ modules:
     dependencies: ["01-tool-detection"]
     template_file: "03-fd-config.zsh"
 
+  - name: "03-eza-config.zsh"
+    description: "eza (现代化 ls 替代品) 配置与功能"
+    required_tools: ["eza"]
+    dependencies: ["01-tool-detection"]
+    template_file: "03-eza-config.zsh"
+
   - name: "04-fzf-core.zsh"
     description: "fzf核心配置和显示设置"
     required_tools: ["fzf"]
