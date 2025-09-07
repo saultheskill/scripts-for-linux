@@ -114,17 +114,74 @@ fi
 
 # =============================================================================
 # fzf (模糊查找工具) 高级配置与集成
+# 基于官方 ADVANCED.md 文档的全面配置
 # =============================================================================
 
 if command -v fzf >/dev/null 2>&1; then
-    # fzf 核心配置 - 优化的默认选项
-    export FZF_DEFAULT_OPTS="--height 60% --layout=reverse --border --inline-info --preview-window=right:50%:wrap --bind='ctrl-/:toggle-preview'"
+    # =============================================================================
+    # fzf 核心显示配置 - 基于官方高级示例
+    # =============================================================================
+
+    # 高级默认选项配置 - 基于官方ADVANCED.md文档优化
+    export FZF_DEFAULT_OPTS="
+        --height=70%
+        --layout=reverse
+        --info=inline
+        --border=rounded
+        --margin=1
+        --padding=1
+        --preview-window=right:60%:wrap:border-left
+        --bind='ctrl-/:toggle-preview'
+        --bind='ctrl-u:preview-page-up'
+        --bind='ctrl-d:preview-page-down'
+        --bind='ctrl-a:select-all'
+        --bind='ctrl-x:deselect-all'
+        --bind='ctrl-t:toggle-all'
+        --bind='alt-up:preview-up'
+        --bind='alt-down:preview-down'
+        --bind='ctrl-s:toggle-sort'
+        --bind='ctrl-r:reload(find . -type f)'
+        --bind='alt-enter:print-query'
+        --color='fg:#d0d0d0,bg:#121212,hl:#5f87af'
+        --color='fg+:#d0d0d0,bg+:#262626,hl+:#5fd7ff'
+        --color='info:#afaf87,prompt:#d7005f,pointer:#af5fff'
+        --color='marker:#87ff00,spinner:#af5fff,header:#87afaf'
+        --color='border:#585858,preview-bg:#121212'
+    "
+
+    # =============================================================================
+    # tmux 集成配置 - 基于官方ADVANCED.md的tmux popup功能
+    # =============================================================================
+
+    if [[ -n "$TMUX" ]] && command -v tmux >/dev/null 2>&1; then
+        # 检查tmux版本是否支持popup (需要3.3+)
+        local tmux_version
+        tmux_version=$(tmux -V 2>/dev/null | sed 's/tmux //' | cut -d. -f1-2)
+
+        if command -v bc >/dev/null 2>&1 && [[ $(echo "$tmux_version >= 3.3" | bc 2>/dev/null) -eq 1 ]]; then
+            # 高级tmux popup配置
+            export FZF_TMUX_OPTS="-p 80%,70%"
+
+            # tmux popup 变体函数
+            fzf-tmux-center() { fzf --tmux center,80%,70% "$@"; }
+            fzf-tmux-right() { fzf --tmux right,50%,70% "$@"; }
+            fzf-tmux-bottom() { fzf --tmux bottom,100%,50% "$@"; }
+            fzf-tmux-top() { fzf --tmux top,100%,50% "$@"; }
+
+            # 别名
+            alias fzf-popup='fzf-tmux-center'
+            alias fzf-side='fzf-tmux-right'
+        else
+            # 降级到传统的tmux分割窗口模式
+            export FZF_TMUX_OPTS="-d 70%"
+        fi
+    fi
 
     # 使用 fd 作为 fzf 的默认搜索命令（如果可用）
     if command -v fd >/dev/null 2>&1; then
-        export FZF_DEFAULT_COMMAND='fd --type f --hidden --follow --exclude .git --exclude node_modules'
+        export FZF_DEFAULT_COMMAND='fd --type f --hidden --follow --exclude .git --exclude node_modules --exclude .cache'
         export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_COMMAND"
-        export FZF_ALT_C_COMMAND='fd --type d --hidden --follow --exclude .git --exclude node_modules'
+        export FZF_ALT_C_COMMAND='fd --type d --hidden --follow --exclude .git --exclude node_modules --exclude .cache'
     fi
 
     # fzf + bat 集成：带语法高亮的文件预览
@@ -200,12 +257,56 @@ if command -v fzf >/dev/null 2>&1; then
         source /usr/share/doc/fzf/examples/completion.zsh
     fi
 
+    # =============================================================================
+    # 基于官方ADVANCED.md的动态重载和进程管理功能
+    # =============================================================================
+
+    # 动态进程管理器 - 基于文档示例
+    fzf-processes() {
+        (date; ps -ef) |
+        fzf --bind='ctrl-r:reload(date; ps -ef)' \
+            --header=$'Press CTRL-R to reload\n\n' --header-lines=2 \
+            --preview='echo {}' --preview-window=down,3,wrap \
+            --layout=reverse --height=80% | awk '{print $2}' | xargs kill -9
+    }
+
+    # 动态数据源切换 - 基于文档示例
+    fzf-files-dirs() {
+        find * 2>/dev/null | fzf --prompt 'All> ' \
+                     --header 'CTRL-D: Directories / CTRL-F: Files' \
+                     --bind 'ctrl-d:change-prompt(Directories> )+reload(find * -type d 2>/dev/null)' \
+                     --bind 'ctrl-f:change-prompt(Files> )+reload(find * -type f 2>/dev/null)'
+    }
+
+    # 单键切换模式 - 基于文档的transform示例
+    fzf-toggle-mode() {
+        if command -v fd >/dev/null 2>&1; then
+            fd --type file |
+            fzf --prompt 'Files> ' \
+                --header 'CTRL-T: Switch between Files/Directories' \
+                --bind 'ctrl-t:transform:[[ ! $FZF_PROMPT =~ Files ]] &&
+                        echo "change-prompt(Files> )+reload(fd --type file)" ||
+                        echo "change-prompt(Directories> )+reload(fd --type directory)"' \
+                --preview '[[ $FZF_PROMPT =~ Files ]] && bat --color=always {} || tree -C {}'
+        else
+            find . -type f |
+            fzf --prompt 'Files> ' \
+                --header 'CTRL-T: Switch between Files/Directories' \
+                --bind 'ctrl-t:transform:[[ ! $FZF_PROMPT =~ Files ]] &&
+                        echo "change-prompt(Files> )+reload(find . -type f)" ||
+                        echo "change-prompt(Directories> )+reload(find . -type d)"'
+        fi
+    }
+
     # 实用别名
     alias fe='fzf-edit'           # 搜索并编辑文件
     alias fcd='fzf-cd'            # 搜索并切换目录
     alias fp='fzf-project'        # 快速跳转项目
     alias fc='fzf-content'        # 搜索文件内容
     alias fthemes='fzf-bat-themes' # 预览 bat 主题
+    alias fps='fzf-processes'     # 动态进程管理
+    alias ffd='fzf-files-dirs'    # 文件目录切换
+    alias ftm='fzf-toggle-mode'   # 单键模式切换
 fi
 
 # =============================================================================
@@ -230,9 +331,87 @@ if command -v rg >/dev/null 2>&1; then
 EOF
     fi
 
-    # ripgrep + bat 集成：batgrep 功能
+    # =============================================================================
+    # 基于官方ADVANCED.md的高级Ripgrep集成功能
+    # =============================================================================
+
     if command -v bat >/dev/null 2>&1; then
-        # 搜索并用 bat 高亮显示结果
+        # 1. 使用fzf作为Ripgrep的二级过滤器 - 基于文档示例
+        rfv() {
+            if [[ $# -eq 0 ]]; then
+                echo "用法: rfv <搜索模式>"
+                echo "功能: 使用Ripgrep搜索，然后用fzf交互式过滤"
+                return 1
+            fi
+
+            rg --color=always --line-number --no-heading --smart-case "${*:-}" |
+            fzf --ansi \
+                --color "hl:-1:underline,hl+:-1:underline:reverse" \
+                --delimiter : \
+                --preview 'bat --color=always {1} --highlight-line {2}' \
+                --preview-window 'up,60%,border-bottom,+{2}+3/3,~3' \
+                --bind 'enter:become(vim {1} +{2})'
+        }
+
+        # 2. 交互式Ripgrep启动器 - 基于文档示例
+        rgi() {
+            local RG_PREFIX="rg --column --line-number --no-heading --color=always --smart-case "
+            local INITIAL_QUERY="${*:-}"
+            fzf --ansi --disabled --query "$INITIAL_QUERY" \
+                --bind "start:reload:$RG_PREFIX {q}" \
+                --bind "change:reload:sleep 0.1; $RG_PREFIX {q} || true" \
+                --delimiter : \
+                --preview 'bat --color=always {1} --highlight-line {2}' \
+                --preview-window 'up,60%,border-bottom,+{2}+3/3,~3' \
+                --bind 'enter:become(vim {1} +{2})'
+        }
+
+        # 3. 双阶段搜索：Ripgrep + fzf切换 - 基于文档示例
+        rg2() {
+            local RG_PREFIX="rg --column --line-number --no-heading --color=always --smart-case "
+            local INITIAL_QUERY="${*:-}"
+            fzf --ansi --disabled --query "$INITIAL_QUERY" \
+                --bind "start:reload:$RG_PREFIX {q}" \
+                --bind "change:reload:sleep 0.1; $RG_PREFIX {q} || true" \
+                --bind "alt-enter:unbind(change,alt-enter)+change-prompt(2. fzf> )+enable-search+clear-query" \
+                --color "hl:-1:underline,hl+:-1:underline:reverse" \
+                --prompt '1. ripgrep> ' \
+                --delimiter : \
+                --preview 'bat --color=always {1} --highlight-line {2}' \
+                --preview-window 'up,60%,border-bottom,+{2}+3/3,~3' \
+                --bind 'enter:become(vim {1} +{2})'
+        }
+
+        # 4. Ripgrep和fzf模式切换 - 基于文档示例
+        rgs() {
+            local RG_PREFIX="rg --column --line-number --no-heading --color=always --smart-case "
+            local INITIAL_QUERY="${*:-}"
+
+            # 创建临时文件存储查询状态
+            local tmp_r="/tmp/rg-fzf-r-$$"
+            local tmp_f="/tmp/rg-fzf-f-$$"
+            echo "$INITIAL_QUERY" > "$tmp_r"
+            echo "" > "$tmp_f"
+
+            fzf --ansi --disabled --query "$INITIAL_QUERY" \
+                --bind "start:reload($RG_PREFIX {q})+unbind(ctrl-r)" \
+                --bind "change:reload:sleep 0.1; $RG_PREFIX {q} || true" \
+                --bind "ctrl-f:unbind(change,ctrl-f)+change-prompt(2. fzf> )+enable-search+rebind(ctrl-r)+transform-query(echo {q} > $tmp_r; cat $tmp_f)" \
+                --bind "ctrl-r:unbind(ctrl-r)+change-prompt(1. ripgrep> )+disable-search+reload($RG_PREFIX {q} || true)+rebind(change,ctrl-f)+transform-query(echo {q} > $tmp_f; cat $tmp_r)" \
+                --color "hl:-1:underline,hl+:-1:underline:reverse" \
+                --prompt '1. ripgrep> ' \
+                --delimiter : \
+                --header '╱ CTRL-R (ripgrep mode) ╱ CTRL-F (fzf mode) ╱' \
+                --preview 'bat --color=always {1} --highlight-line {2}' \
+                --preview-window 'up,60%,border-bottom,+{2}+3/3,~3' \
+                --bind 'enter:become(vim {1} +{2})' \
+                --bind "ctrl-c:execute(rm -f $tmp_r $tmp_f)"
+
+            # 清理临时文件
+            rm -f "$tmp_r" "$tmp_f" 2>/dev/null
+        }
+
+        # 传统batgrep功能保持兼容
         batgrep() {
             if [[ $# -eq 0 ]]; then
                 echo "用法: batgrep <搜索模式> [路径]"
@@ -310,10 +489,85 @@ if command -v git >/dev/null 2>&1 && command -v bat >/dev/null 2>&1; then
             --bind 'enter:become(git show {1} | bat --language=diff --paging=always)'
     }
 
-    # Git 别名
+    # =============================================================================
+    # 基于官方ADVANCED.md的Git对象键绑定功能
+    # =============================================================================
+
+    # Git状态文件交互选择
+    fzf-git-status() {
+        # 确保bat命令可用
+        local bat_cmd
+        if command -v batcat >/dev/null 2>&1; then
+            bat_cmd='batcat'
+        elif command -v bat >/dev/null 2>&1; then
+            bat_cmd='bat'
+        else
+            echo "错误：未找到bat工具，请先安装"
+            return 1
+        fi
+
+        git status --porcelain |
+        fzf --multi \
+            --preview "git diff --color=always {2} | $bat_cmd --language=diff" \
+            --preview-window 'right:60%:wrap' \
+            --header 'CTRL-A: Add | CTRL-R: Reset | CTRL-D: Diff | Enter: Edit' \
+            --bind 'ctrl-a:execute(git add {2})' \
+            --bind 'ctrl-r:execute(git reset {2})' \
+            --bind "ctrl-d:execute(git diff {2} | $bat_cmd --language=diff --paging=always)" \
+            --bind 'enter:become(${EDITOR:-vim} {2})'
+    }
+
+    # Git分支交互选择
+    fzf-git-branch() {
+        git branch -a --color=always |
+        grep -v '/HEAD\\s' |
+        fzf --ansi \
+            --multi \
+            --preview 'git log --oneline --graph --date=short --color=always --pretty="format:%C(auto)%cd %h%d %s" $(sed s/^..// <<< {} | cut -d" " -f1) | head -200' \
+            --preview-window 'right:60%:wrap' \
+            --header 'CTRL-O: Checkout | CTRL-D: Delete | CTRL-M: Merge | Enter: Show log' \
+            --bind 'ctrl-o:execute(git checkout $(sed s/^..// <<< {} | cut -d" " -f1))' \
+            --bind 'ctrl-d:execute(git branch -d $(sed s/^..// <<< {} | cut -d" " -f1))' \
+            --bind 'ctrl-m:execute(git merge $(sed s/^..// <<< {} | cut -d" " -f1))' \
+            --bind 'enter:execute(git log --oneline --graph --color=always $(sed s/^..// <<< {} | cut -d" " -f1) | bat --language=gitlog --paging=always)'
+    }
+
+    # Git提交哈希交互选择
+    fzf-git-commits() {
+        git log --color=always --format="%C(auto)%h%d %s %C(black)%C(bold)%cr" "$@" |
+        fzf --ansi \
+            --no-sort \
+            --reverse \
+            --multi \
+            --preview 'git show --color=always {1} | bat --language=diff' \
+            --preview-window 'right:60%:wrap' \
+            --header 'CTRL-S: Show | CTRL-D: Diff | CTRL-R: Reset | Enter: Show details' \
+            --bind 'ctrl-s:execute(git show {1} | bat --language=diff --paging=always)' \
+            --bind 'ctrl-d:execute(git diff {1}^ {1} | bat --language=diff --paging=always)' \
+            --bind 'ctrl-r:execute(git reset --hard {1})' \
+            --bind 'enter:execute(git show --stat --color=always {1} | bat --language=gitlog --paging=always)'
+    }
+
+    # Git标签交互选择
+    fzf-git-tags() {
+        git tag --sort=-version:refname |
+        fzf --multi \
+            --preview 'git show --color=always {} | bat --language=diff' \
+            --preview-window 'right:60%:wrap' \
+            --header 'CTRL-O: Checkout | CTRL-D: Delete | Enter: Show' \
+            --bind 'ctrl-o:execute(git checkout {})' \
+            --bind 'ctrl-d:execute(git tag -d {})' \
+            --bind 'enter:execute(git show --color=always {} | bat --language=diff --paging=always)'
+    }
+
+    # Git别名 - 包含新的交互功能
     alias gshow='git-show-bat'
     alias gdiff='batdiff'
     alias glog='git-log-bat'
+    alias gst='fzf-git-status'      # Git状态交互
+    alias gbr='fzf-git-branch'      # Git分支交互
+    alias gco='fzf-git-commits'     # Git提交交互
+    alias gtg='fzf-git-tags'        # Git标签交互
 fi
 
 # =============================================================================
@@ -357,10 +611,85 @@ if command -v bat >/dev/null 2>&1; then
         wait
     }
 
+    # =============================================================================
+    # 基于官方ADVANCED.md的高级日志监控功能
+    # =============================================================================
+
+    # 交互式日志文件选择和监控
+    fzf-log-tail() {
+        local log_dirs=("/var/log" "/var/log/nginx" "/var/log/apache2" "$HOME/.local/share/logs")
+        local log_files
+
+        # 收集所有日志文件
+        log_files=$(find "${log_dirs[@]}" -name "*.log" -o -name "syslog*" -o -name "auth.log*" -o -name "kern.log*" 2>/dev/null | sort)
+
+        if [[ -z "$log_files" ]]; then
+            echo "未找到日志文件"
+            return 1
+        fi
+
+        echo "$log_files" |
+        fzf --preview 'tail -50 {} | bat --color=always -l log' \
+            --preview-window 'right:60%:wrap' \
+            --header 'CTRL-T: Tail -f | CTRL-L: Less | Enter: View last 100 lines' \
+            --bind 'ctrl-t:execute(tail -f {} | bat --paging=never -l log)' \
+            --bind 'ctrl-l:execute(bat --paging=always -l log {})' \
+            --bind 'enter:execute(tail -100 {} | bat --paging=always -l log)'
+    }
+
+    # 多日志文件并行监控
+    fzf-multi-log-tail() {
+        local log_dirs=("/var/log" "/var/log/nginx" "/var/log/apache2")
+        local selected_logs
+
+        selected_logs=$(find "${log_dirs[@]}" -name "*.log" -o -name "syslog*" 2>/dev/null |
+                       fzf --multi \
+                           --preview 'tail -20 {} | bat --color=always -l log' \
+                           --preview-window 'right:50%:wrap' \
+                           --header 'Select multiple log files to monitor (TAB to select)')
+
+        if [[ -n "$selected_logs" ]]; then
+            echo "监控以下日志文件:"
+            echo "$selected_logs"
+            echo "按 Ctrl+C 停止监控"
+            echo
+
+            # 使用multitail或者简单的并行tail
+            if command -v multitail >/dev/null 2>&1; then
+                multitail $(echo "$selected_logs" | tr '\n' ' ')
+            else
+                # 简单的并行tail实现
+                echo "$selected_logs" | while read -r logfile; do
+                    (echo "==> $logfile <=="; tail -f "$logfile" | sed "s/^/[$logfile] /") &
+                done | bat --paging=never -l log
+            fi
+        fi
+    }
+
+    # 日志级别过滤监控
+    fzf-log-level() {
+        if [[ $# -eq 0 ]]; then
+            echo "用法: fzf-log-level <日志文件>"
+            return 1
+        fi
+
+        local logfile="$1"
+        local levels=("ERROR" "WARN" "INFO" "DEBUG" "TRACE" "ALL")
+
+        printf '%s\n' "${levels[@]}" |
+        fzf --preview "grep -i {} '$logfile' | tail -50 | bat --color=always -l log" \
+            --preview-window 'down:60%:wrap' \
+            --header 'Select log level to monitor' \
+            --bind "enter:execute(if [[ {} == 'ALL' ]]; then tail -f '$logfile' | bat --paging=never -l log; else tail -f '$logfile' | grep -i {} | bat --paging=never -l log; fi)"
+    }
+
     # 常用日志监控别名
     alias tailsys='tailbat /var/log/syslog log'
     alias tailauth='tailbat /var/log/auth.log log'
     alias taildmesg='dmesg -w | bat --paging=never -l log'
+    alias flog='fzf-log-tail'          # 交互式日志选择
+    alias fmlogs='fzf-multi-log-tail'  # 多日志监控
+    alias flevel='fzf-log-level'       # 日志级别过滤
 fi
 
 # =============================================================================
@@ -630,34 +959,50 @@ alias bashrc='${EDITOR:-vim} ~/.bashrc'
 # 工具组合快捷键和提示信息
 # =============================================================================
 
-# 显示可用的工具组合命令
+# 显示可用的工具组合命令 - 基于ADVANCED.md的全面功能
 show-tools() {
-    echo "==> 可用的现代命令行工具组合 <=="
+    echo "==> 🚀 现代命令行工具组合 - 基于fzf ADVANCED.md全面实现 <=="
     echo
-    echo "文件搜索和预览:"
+    echo "📁 文件搜索和预览:"
     echo "  fe          - fzf + bat: 搜索并编辑文件"
     echo "  fcd         - fzf + fd: 搜索并切换目录"
     echo "  fp          - fzf: 快速跳转项目目录"
     echo "  fc          - fzf + rg: 搜索文件内容"
     echo "  fthemes     - fzf + bat: 预览 bat 主题"
     echo
-    echo "搜索和内容查看:"
-    echo "  batgrep     - rg + bat: 搜索并高亮显示"
-    echo "  rg-fzf      - rg + fzf + bat: 交互式内容搜索"
-    echo "  fdbat       - fd + bat: 批量查看搜索结果"
-    echo "  fdpreview   - fd + bat: 搜索并预览文件"
+    echo "🔄 动态重载和模式切换 (基于ADVANCED.md):"
+    echo "  fps         - fzf动态进程管理 (CTRL-R重载)"
+    echo "  ffd         - 文件/目录动态切换 (CTRL-D/CTRL-F)"
+    echo "  ftm         - 单键模式切换 (CTRL-T)"
+    echo "  fzf-popup   - tmux popup模式 (需要tmux 3.3+)"
+    echo "  fzf-side    - tmux侧边栏模式"
     echo
-    echo "Git 集成:"
+    echo "🔍 高级Ripgrep集成 (基于ADVANCED.md):"
+    echo "  rfv         - Ripgrep + fzf二级过滤"
+    echo "  rgi         - 交互式Ripgrep启动器"
+    echo "  rg2         - 双阶段搜索 (ALT-Enter切换)"
+    echo "  rgs         - Ripgrep/fzf模式切换 (CTRL-R/CTRL-F)"
+    echo "  batgrep     - 传统rg + bat搜索"
+    echo "  rg-fzf      - rg + fzf + bat交互式搜索"
+    echo
+    echo "🌿 Git对象交互 (基于ADVANCED.md):"
+    echo "  gst         - Git状态交互 (CTRL-A添加/CTRL-R重置)"
+    echo "  gbr         - Git分支交互 (CTRL-O切换/CTRL-D删除)"
+    echo "  gco         - Git提交交互 (CTRL-S显示/CTRL-D对比)"
+    echo "  gtg         - Git标签交互 (CTRL-O切换/CTRL-D删除)"
     echo "  gshow       - git + bat: 查看历史版本文件"
-    echo "  gdiff       - git + bat: 增强的 diff 查看"
-    echo "  glog        - git + fzf + bat: 交互式 log 查看"
+    echo "  gdiff       - git + bat: 增强的diff查看"
+    echo "  glog        - git + fzf + bat: 交互式log查看"
     echo
-    echo "日志监控:"
+    echo "📊 高级日志监控 (基于ADVANCED.md):"
+    echo "  flog        - 交互式日志文件选择"
+    echo "  fmlogs      - 多日志文件并行监控"
+    echo "  flevel      - 日志级别过滤监控"
     echo "  tailbat     - tail + bat: 实时日志监控"
     echo "  tailsys     - 系统日志监控"
     echo "  tailauth    - 认证日志监控"
     echo
-    echo "系统分析:"
+    echo "🔧 系统分析和工具:"
     echo "  search      - 综合搜索（文件名+内容）"
     echo "  analyze     - 项目结构分析"
     echo "  large       - 查找大文件"
@@ -665,21 +1010,39 @@ show-tools() {
     echo "  port        - 端口占用检查"
     echo "  info        - 系统信息概览"
     echo
-    echo "复制和粘贴:"
+    echo "📋 复制和粘贴:"
     echo "  batcopy     - bat + xclip: 复制文件内容"
     echo "  batpaste    - xclip + bat: 粘贴并高亮显示"
     echo
-    echo "手册和帮助:"
-    echo "  batman      - man + bat: 彩色 man 页面"
-    echo "  man-search  - man + fzf: 搜索 man 页面"
+    echo "📖 手册和帮助:"
+    echo "  batman      - man + bat: 彩色man页面"
+    echo "  man-search  - man + fzf: 搜索man页面"
     echo
-    echo "提示: 运行 'show-tools' 随时查看此帮助信息"
+    echo "⌨️  高级键绑定 (在fzf中可用):"
+    echo "  CTRL-/      - 切换预览窗口"
+    echo "  CTRL-U/D    - 预览窗口上下翻页"
+    echo "  ALT-UP/DOWN - 预览内容上下滚动"
+    echo "  CTRL-A/X    - 全选/取消全选"
+    echo "  CTRL-T      - 切换选择"
+    echo "  CTRL-S      - 切换排序"
+    echo "  CTRL-R      - 重载数据"
+    echo
+    echo "🎨 tmux集成 (需要tmux 3.3+):"
+    echo "  fzf-tmux-center  - 中央popup"
+    echo "  fzf-tmux-right   - 右侧popup"
+    echo "  fzf-tmux-bottom  - 底部popup"
+    echo "  fzf-tmux-top     - 顶部popup"
+    echo
+    echo "💡 提示: 运行 'show-tools' 随时查看此帮助信息"
+    echo "📚 基于官方fzf ADVANCED.md文档实现的全面功能集"
 }
 
 # 首次加载时显示提示
 if [[ -z "$SHELL_TOOLS_LOADED" ]]; then
     export SHELL_TOOLS_LOADED=1
-    echo "🚀 现代命令行工具已加载！运行 'show-tools' 查看可用命令"
+    echo "🚀 现代命令行工具已加载！基于fzf ADVANCED.md全面实现"
+    echo "💡 运行 'show-tools' 查看所有可用的高级功能"
+    echo "📚 包含动态重载、模式切换、Git集成、日志监控等高级特性"
 fi
 '''
 
