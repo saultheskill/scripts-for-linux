@@ -29,7 +29,7 @@ if command -v fzf >/dev/null 2>&1; then
     "
 
     # tmux 集成配置 - 基于官方ADVANCED.md的tmux popup功能
-    if [[ -n "$TMUX" ]] && command -v tmux >/dev/null 2>&1; then
+    if [[ -n "${TMUX:-}" ]] && command -v tmux >/dev/null 2>&1; then
         # 检查tmux版本是否支持popup (需要3.3+)
         local tmux_version
         tmux_version=$(tmux -V 2>/dev/null | sed 's/tmux //' | cut -d. -f1-2)
