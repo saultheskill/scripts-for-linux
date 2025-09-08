@@ -114,51 +114,56 @@ def execute_command(cmd: Union[str, List[str]], description: str = "执行命令
     log_info(f"开始执行: {description}")
     log_debug(f"命令: {cmd}")
 
+    temp_output = None
+    temp_error = None
     try:
         # 创建临时文件存储输出
-        with tempfile.NamedTemporaryFile(mode='w+', delete=False) as temp_output, \
-             tempfile.NamedTemporaryFile(mode='w+', delete=False) as temp_error:
+        temp_output = tempfile.NamedTemporaryFile(mode='w+', delete=False)
+        temp_error = tempfile.NamedTemporaryFile(mode='w+', delete=False)
 
-            # 执行命令
-            if isinstance(cmd, str):
-                result = subprocess.run(cmd, shell=True, stdout=temp_output,
-                                      stderr=temp_error, text=True)
-            else:
-                result = subprocess.run(cmd, stdout=temp_output,
-                                      stderr=temp_error, text=True)
+        # 执行命令
+        if isinstance(cmd, str):
+            result = subprocess.run(cmd, shell=True, stdout=temp_output,
+                                  stderr=temp_error, text=True)
+        else:
+            result = subprocess.run(cmd, stdout=temp_output,
+                                  stderr=temp_error, text=True)
 
-            # 读取输出
-            temp_output.seek(0)
-            temp_error.seek(0)
-            stdout_content = temp_output.read()
-            stderr_content = temp_error.read()
+        # 读取输出
+        temp_output.seek(0)
+        temp_error.seek(0)
+        stdout_content = temp_output.read()
+        stderr_content = temp_error.read()
 
-            if result.returncode == 0:
-                log_info(f"[SUCCESS] {description} - 成功完成")
+        temp_output.close()
+        temp_error.close()
 
-                # 显示输出（如果有）
-                if stdout_content.strip():
-                    log_debug("命令输出:")
-                    for line in stdout_content.strip().split('\n'):
-                        log_debug(f"  {line}")
+        if result.returncode == 0:
+            log_info(f"[SUCCESS] {description} - 成功完成")
 
-                return True
-            else:
-                log_error(f"[ERROR] {description} - 执行失败 (退出码: {result.returncode})")
+            # 显示输出（如果有）
+            if stdout_content.strip():
+                log_debug("命令输出:")
+                for line in stdout_content.strip().split('\n'):
+                    log_debug(f"  {line}")
 
-                # 显示错误输出
-                if stderr_content.strip():
-                    log_error("错误信息:")
-                    for line in stderr_content.strip().split('\n'):
-                        log_error(f"  {line}")
+            return True
+        else:
+            log_error(f"[ERROR] {description} - 执行失败 (退出码: {result.returncode})")
 
-                # 显示标准输出（可能包含有用信息）
-                if stdout_content.strip():
-                    log_warn("标准输出:")
-                    for line in stdout_content.strip().split('\n'):
-                        log_warn(f"  {line}")
+            # 显示错误输出
+            if stderr_content.strip():
+                log_error("错误信息:")
+                for line in stderr_content.strip().split('\n'):
+                    log_error(f"  {line}")
 
-                return False
+            # 显示标准输出（可能包含有用信息）
+            if stdout_content.strip():
+                log_warn("标准输出:")
+                for line in stdout_content.strip().split('\n'):
+                    log_warn(f"  {line}")
+
+            return False
 
     except Exception as e:
         log_error(f"执行命令时发生异常: {e}")
@@ -166,12 +171,14 @@ def execute_command(cmd: Union[str, List[str]], description: str = "执行命令
     finally:
         # 清理临时文件
         try:
-            os.unlink(temp_output.name)
-            os.unlink(temp_error.name)
+            if temp_output is not None:
+                os.unlink(temp_output.name)
+            if temp_error is not None:
+                os.unlink(temp_error.name)
         except:
             pass
 
-def verify_command(cmd: str, package_name: str = None) -> bool:
+def verify_command(cmd: str, package_name: Optional[str] = None) -> bool:
     """
     验证命令是否成功安装
 

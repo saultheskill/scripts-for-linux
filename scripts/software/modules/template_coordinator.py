@@ -8,7 +8,7 @@
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 
 # 尝试导入yaml，如果失败则安装
 try:
@@ -48,14 +48,14 @@ except ImportError:
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 try:
-    from common import log_info, log_warn, log_error, log_success, show_header
+    from common import log_info, log_warn, log_error, log_success
 except ImportError:
     # 如果无法导入，提供简单的日志函数
-    def log_info(msg): print(f"[INFO] {msg}")
-    def log_warn(msg): print(f"[WARN] {msg}")
-    def log_error(msg): print(f"[ERROR] {msg}")
-    def log_success(msg): print(f"[SUCCESS] {msg}")
-    def show_header(title, version, desc): print(f"=== {title} v{version} ===\n{desc}")
+    def log_info(message): print(f"[INFO] {message}")
+    def log_warn(message): print(f"[WARN] {message}")
+    def log_error(message): print(f"[ERROR] {message}")
+    def log_success(message): print(f"[SUCCESS] {message}")
+    def show_header(script_name, script_version="1.0", script_description=""): print(f"=== {script_name} v{script_version} ===\n{script_description}")
 
 from .tool_detector import get_tool_detector
 from .file_manager import get_file_manager
@@ -298,7 +298,7 @@ shell-tools-status() {
 '''
         return self.file_manager.write_debug_file(debug_content)
 
-    def get_generation_summary(self) -> Dict[str, any]:
+    def get_generation_summary(self) -> Dict[str, Any]:
         """获取生成摘要信息"""
         stats = self.file_manager.get_file_stats()
         tool_summary = self.tool_detector.get_available_tools_summary()
