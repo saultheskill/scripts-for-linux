@@ -614,7 +614,6 @@ def install_common_software() -> bool:
         ("tshark", "网络包分析"),
         ("nmap", "网络扫描工具"),
         ("fd-find", "find的现代替代品"),
-        ("fdclone", "find的现代替代品v2"),
         ("ripgrep", "grep的现代替代品"),
         ("lazygit", "Git的图形界面"),
          ("eza", "ls的现代替代品")

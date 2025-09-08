@@ -339,16 +339,29 @@ def update_package_manager() -> bool:
     sudo_cmd = check_root()
 
     if shutil.which('apt'):
-        cmd = f"{sudo_cmd} apt update".strip()
-        return execute_command(cmd, "更新APT包列表")
+        # 添加超时和错误处理
+        cmd = f"timeout 120 {sudo_cmd} apt update".strip()
+        result = execute_command(cmd, "更新APT包列表")
+
+        # 如果超时，尝试清理并重试
+        if not result:
+            log_warn("[WARN] APT更新超时，尝试清理缓存后重试...")
+            cleanup_cmd = f"{sudo_cmd} apt clean && {sudo_cmd} apt autoclean".strip()
+            execute_command(cleanup_cmd, "清理APT缓存")
+
+            # 重试一次，使用更短的超时
+            retry_cmd = f"timeout 60 {sudo_cmd} apt update".strip()
+            result = execute_command(retry_cmd, "重试更新APT包列表")
+
+        return result
     elif shutil.which('yum'):
-        cmd = f"{sudo_cmd} yum update -y".strip()
+        cmd = f"timeout 120 {sudo_cmd} yum update -y".strip()
         return execute_command(cmd, "更新YUM包列表")
     elif shutil.which('dnf'):
-        cmd = f"{sudo_cmd} dnf update -y".strip()
+        cmd = f"timeout 120 {sudo_cmd} dnf update -y".strip()
         return execute_command(cmd, "更新DNF包列表")
     elif shutil.which('pacman'):
-        cmd = f"{sudo_cmd} pacman -Sy".strip()
+        cmd = f"timeout 60 {sudo_cmd} pacman -Sy".strip()
         return execute_command(cmd, "更新Pacman包列表")
     else:
         log_error("[ERROR] 未找到支持的包管理器")

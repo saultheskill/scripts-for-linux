@@ -6,9 +6,43 @@
 """
 
 import sys
-import yaml
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
+
+# 尝试导入yaml，如果失败则安装
+try:
+    import yaml
+except ImportError:
+    print("[WARN] PyYAML未安装，尝试安装...")
+    try:
+        import subprocess
+        import os
+
+        # 尝试使用apt安装
+        result = subprocess.run(['apt', 'install', '-y', 'python3-yaml'],
+                              capture_output=True, text=True, timeout=60)
+        if result.returncode == 0:
+            import yaml
+            print("[SUCCESS] PyYAML安装成功")
+        else:
+            # 如果apt失败，尝试pip
+            result = subprocess.run([sys.executable, '-m', 'pip', 'install', 'PyYAML'],
+                                  capture_output=True, text=True, timeout=60)
+            if result.returncode == 0:
+                import yaml
+                print("[SUCCESS] PyYAML通过pip安装成功")
+            else:
+                raise ImportError("无法安装PyYAML")
+    except Exception as e:
+        print(f"[ERROR] 无法安装PyYAML: {e}")
+        # 提供一个简单的YAML解析器作为fallback
+        class SimpleYAML:
+            @staticmethod
+            def safe_load(content):
+                # 这是一个非常简单的YAML解析器，仅用于紧急情况
+                return {"modules": [], "config": {}}
+        yaml = SimpleYAML()
 
 # 添加父目录到路径以导入common模块
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -108,80 +142,39 @@ class TemplateCoordinator:
         return success_count > 0
 
     def _generate_main_config(self) -> bool:
-        """生成主配置文件"""
-        # 使用简化的主配置内容
-        content = '''# =============================================================================
-# Shell Tools Main Configuration - 模块化配置系统
-# 由 shell-tools-config-generator.py v2.1 自动生成（基于模板）
-# 集成了 fzf、bat、fd、ripgrep、git 等工具的模块化配置
-# =============================================================================
+        """
+        从模板文件生成主配置文件
+        使用模板文件方式替代硬编码，提高可维护性和架构一致性
+        """
+        template_path = self.templates_dir / "shell-tools-main.zsh"
 
-# 模块加载状态跟踪
-declare -A SHELL_TOOLS_MODULES_LOADED
-declare -A SHELL_TOOLS_MODULES_FAILED
+        if not template_path.exists():
+            log_error(f"主配置模板文件不存在: {template_path}")
+            return False
 
-# 模块加载函数
-load_shell_tools_module() {
-    local module_name="$1"
-    local module_path="$2"
+        try:
+            # 读取模板内容
+            with open(template_path, 'r', encoding='utf-8') as f:
+                template_content = f.read()
 
-    if [[ -f "$module_path" ]]; then
-        if source "$module_path" 2>/dev/null; then
-            SHELL_TOOLS_MODULES_LOADED["$module_name"]=1
-            [[ -n "$SHELL_TOOLS_DEBUG" ]] && echo "✓ 已加载模块: $module_name"
-        else
-            SHELL_TOOLS_MODULES_FAILED["$module_name"]=1
-            [[ -n "$SHELL_TOOLS_DEBUG" ]] && echo "✗ 模块加载失败: $module_name"
-        fi
-    else
-        [[ -n "$SHELL_TOOLS_DEBUG" ]] && echo "⚠ 模块文件不存在: $module_path"
-    fi
-}
+            # 准备变量替换
+            variables = {
+                "{{GENERATOR_VERSION}}": "shell-tools-config-generator.py v2.1",
+                "{{GENERATION_TIME}}": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "{{MODULES_DIR}}": "$HOME/.oh-my-zsh/custom/modules",
+            }
 
-# 加载所有模块
-load_all_modules() {
-    local modules_dir="$HOME/.oh-my-zsh/custom/modules"
+            # 执行变量替换
+            config_content = template_content
+            for placeholder, value in variables.items():
+                config_content = config_content.replace(placeholder, value)
 
-    if [[ ! -d "$modules_dir" ]]; then
-        echo "警告: 模块目录不存在: $modules_dir"
-        return 1
-    fi
+            # 写入配置文件
+            return self.file_manager.write_main_config(config_content)
 
-    # 按数字前缀顺序加载模块
-    for module_file in "$modules_dir"/*.zsh; do
-        if [[ -f "$module_file" ]]; then
-            local module_name=$(basename "$module_file" .zsh)
-            load_shell_tools_module "$module_name" "$module_file"
-        fi
-    done
-}
-
-# 调试模块现在是标准模块系统的一部分（99-debug-tools.zsh）
-# 通过 load_all_modules() 自动加载
-
-# 主加载逻辑
-if [[ -z "$SHELL_TOOLS_MAIN_LOADED" ]]; then
-    export SHELL_TOOLS_MAIN_LOADED=1
-
-    # 加载所有模块（包括调试模块 99-debug-tools.zsh）
-    load_all_modules
-
-    # 显示加载状态
-    if [[ -z "$SHELL_TOOLS_QUIET" ]]; then
-        local loaded_count=${#SHELL_TOOLS_MODULES_LOADED[@]}
-        local failed_count=${#SHELL_TOOLS_MODULES_FAILED[@]}
-
-        echo "🚀 Shell Tools 模块化配置已加载！"
-        echo "📦 已加载 $loaded_count 个模块"
-        if [[ $failed_count -gt 0 ]]; then
-            echo "⚠️  $failed_count 个模块加载失败"
-        fi
-        echo "💡 运行 'show-tools' 查看所有可用功能"
-        echo "🔧 运行 'shell-tools-debug' 查看详细状态"
-    fi
-fi
-'''
-        return self.file_manager.write_main_config(content)
+        except Exception as e:
+            log_error(f"从模板生成主配置失败: {str(e)}")
+            return False
 
     def _generate_module_from_template(self, module_name: str, description: str,
                                      required_tools: List[str], dependencies: List[str],

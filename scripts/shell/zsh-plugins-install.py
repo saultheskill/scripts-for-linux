@@ -1107,6 +1107,49 @@ def integrate_ssh_agent_management() -> bool:
         log_error(f"SSH代理管理集成过程中发生错误: {e}")
         return False
 
+def generate_shell_tools_config() -> bool:
+    """
+    集成Shell工具配置
+
+    调用现有的shell-tools-config-generator.py脚本来生成现代shell工具配置。
+    这个脚本已经包含了完整的功能、错误处理和日志记录，避免代码重复。
+
+    Returns:
+        bool: 总是返回True，不阻止ZSH插件安装流程
+    """
+    log_info("集成现代Shell工具配置...")
+
+    try:
+        # 定位现有的生成器脚本
+        current_dir = Path(__file__).parent.parent
+        generator_script = current_dir / "software" / "shell-tools-config-generator.py"
+
+        if not generator_script.exists():
+            log_warn("Shell工具配置生成器未找到，跳过此步骤")
+            return True
+
+        # 使用虚拟环境Python（如果存在）
+        venv_python = current_dir.parent / "venv" / "bin" / "python3"
+        python_cmd = str(venv_python) if venv_python.exists() else "python3"
+
+        # 调用现有的完整功能脚本
+        subprocess.run(
+            [python_cmd, str(generator_script)],
+            cwd=str(current_dir.parent),
+            timeout=60,
+            check=False  # 不抛出异常，让脚本自己处理错误
+        )
+
+        log_success("Shell工具配置集成完成")
+
+    except subprocess.TimeoutExpired:
+        log_warn("Shell工具配置生成超时，跳过此步骤")
+    except Exception as e:
+        log_warn(f"Shell工具配置集成出错: {e}")
+
+    # 总是返回True，不影响ZSH插件安装的主流程
+    return True
+
 def show_installation_summary() -> None:
     """显示安装总结"""
     print(f"{GREEN}================================================================{RESET}")
@@ -1132,11 +1175,18 @@ def show_installation_summary() -> None:
     ssh_agent_config = Path.home() / ".ssh-agent-ohmyzsh"
     print(f"• SSH代理管理: {'✅ 已集成' if ssh_agent_config.exists() else '❌ 未集成'}")
 
+    # 显示Shell工具配置状态
+    shell_tools_config = Path.home() / ".oh-my-zsh" / "custom" / "shell-tools-main.zsh"
+    print(f"• Shell工具配置: {'✅ 已生成' if shell_tools_config.exists() else '❌ 未生成'}")
+
     print()
     print(f"{YELLOW}后续步骤：{RESET}")
     print("1. 重新启动终端或运行 'source ~/.zshrc' 来加载新配置")
     print("2. 插件将在下次启动ZSH时自动生效")
     print("3. 使用 'tmux' 命令体验新的Tmux配置")
+    if shell_tools_config.exists():
+        print("4. 运行 'show-tools' 查看现代shell工具功能")
+        print("5. 运行 'shell-tools-debug' 查看模块加载状态")
     print()
 
     if os.path.exists(ZSH_BACKUP_DIR):
@@ -1195,6 +1245,10 @@ def main() -> int:
         # 集成SSH代理管理
         if not integrate_ssh_agent_management():
             log_warn("SSH代理管理集成失败，但不影响ZSH插件功能")
+
+        # 生成Shell工具配置
+        if not generate_shell_tools_config():
+            log_warn("Shell工具配置生成失败，但不影响ZSH插件功能")
 
         # 显示安装总结
         show_installation_summary()

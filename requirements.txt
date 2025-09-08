@@ -1,7 +1,7 @@
 # =============================================================================
 # Python依赖包列表 - scripts-for-linux项目
 # =============================================================================
-# 
+#
 # 此文件列出了项目运行所需的所有Python第三方依赖包
 # 使用方法：pip install -r requirements.txt
 #
@@ -18,6 +18,11 @@ colorama>=0.4.4
 # 用于：scripts/containers/docker-push.py, scripts/containers/harbor-push.py
 # 功能：Docker Hub API调用、Harbor API调用、镜像搜索等
 requests>=2.25.1
+
+# YAML解析库
+# 用于：scripts/software/modules/template_coordinator.py
+# 功能：解析模块配置文件 modules.yaml
+PyYAML>=5.4.1
 
 # =============================================================================
 # 开发和测试依赖（可选）
