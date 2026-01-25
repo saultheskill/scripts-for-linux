@@ -237,6 +237,533 @@ show_recent_registries() {
 # 加载配置
 load_config
 
+# =============================================
+# 操作日志系统
+# =============================================
+
+LOG_FILE="$HOME/.docker-push-operations.log"
+
+# 记录操作日志
+log_operation() {
+    local operation="$1"
+    local status="$2"
+    local details="$3"
+    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+
+    echo "[$timestamp] [$status] $operation - $details" >> "$LOG_FILE"
+}
+
+# 查看操作日志
+view_operation_log() {
+    echo -e "\e${COLOR_BLUE}=========================================================\e[0m"
+    echo -e "\e${COLOR_GREEN}📋 操作日志 (最近50条)\e[0m"
+    echo -e "\e${COLOR_BLUE}=========================================================\e[0m"
+
+    if [ ! -f "$LOG_FILE" ]; then
+        echo -e "\e${COLOR_YELLOW}暂无操作记录\e[0m"
+        return
+    fi
+
+    tail -n 50 "$LOG_FILE" | while IFS= read -r line; do
+        if [[ "$line" =~ \[SUCCESS\] ]]; then
+            echo -e "\e${COLOR_GREEN}$line\e[0m"
+        elif [[ "$line" =~ \[ERROR\] ]]; then
+            echo -e "\e${COLOR_RED}$line\e[0m"
+        elif [[ "$line" =~ \[WARNING\] ]]; then
+            echo -e "\e${COLOR_YELLOW}$line\e[0m"
+        else
+            echo "$line"
+        fi
+    done
+    echo -e "\e${COLOR_BLUE}=========================================================\e[0m"
+}
+
+# =============================================
+# 删除镜像功能
+# =============================================
+
+# 删除本地镜像
+delete_local_images() {
+    echo -e "\e${COLOR_BLUE}=========================================================\e[0m"
+    echo -e "\e${COLOR_GREEN}🗑️  删除本地镜像\e[0m"
+    echo -e "\e${COLOR_BLUE}=========================================================\e[0m"
+
+    # 获取本地镜像列表
+    readarray -t IMAGES < <(docker images --format "{{.Repository}}:{{.Tag}}|{{.ID}}|{{.Size}}" | grep -v "<none>")
+
+    if [ ${#IMAGES[@]} -eq 0 ]; then
+        echo -e "\e${COLOR_RED}未找到任何本地镜像。\e[0m"
+        log_operation "DELETE_LOCAL" "WARNING" "没有可删除的镜像"
+        return
+    fi
+
+    echo -e "\e${COLOR_YELLOW}选择删除模式：\e[0m"
+    echo -e "\e${COLOR_GREEN}1) 单个删除\e[0m"
+    echo -e "\e${COLOR_GREEN}2) 批量删除\e[0m"
+    echo -e "\e${COLOR_GREEN}3) 智能筛选删除\e[0m"
+    echo -e "\e${COLOR_GREEN}4) 返回\e[0m"
+    echo -e "\e${COLOR_BLUE}=========================================================\e[0m"
+
+    read -p "请选择 [1-4]: " delete_mode
+
+    case $delete_mode in
+        1) delete_single_image "${IMAGES[@]}" ;;
+        2) delete_batch_images "${IMAGES[@]}" ;;
+        3) delete_smart_filter "${IMAGES[@]}" ;;
+        4) return ;;
+        *)
+            echo -e "\e${COLOR_RED}无效选择\e[0m"
+            return
+            ;;
+    esac
+}
+
+# 单个删除镜像
+delete_single_image() {
+    local images=("$@")
+
+    echo -e "\e${COLOR_BLUE}=========================================================\e[0m"
+    echo -e "\e${COLOR_GREEN}本地镜像列表\e[0m"
+    echo -e "\e${COLOR_BLUE}=========================================================\e[0m"
+
+    PAGE_SIZE=20
+    TOTAL_IMAGES=${#images[@]}
+    CURRENT_PAGE=1
+
+    while true; do
+        clear
+        echo -e "\e${COLOR_BLUE}=========================================================\e[0m"
+        echo -e "\e${COLOR_GREEN}本地镜像列表 (第 $(( (TOTAL_IMAGES + PAGE_SIZE - 1) / PAGE_SIZE )) 页，共 ${TOTAL_IMAGES} 个镜像)\e[0m"
+        echo -e "\e${COLOR_BLUE}=========================================================\e[0m"
+
+        START_INDEX=$(( (CURRENT_PAGE - 1) * PAGE_SIZE ))
+        END_INDEX=$(( START_INDEX + PAGE_SIZE - 1 ))
+        if [ $END_INDEX -ge $TOTAL_IMAGES ]; then
+            END_INDEX=$(( TOTAL_IMAGES - 1 ))
+        fi
+
+        for (( i=START_INDEX; i<=END_INDEX; i++ )); do
+            IFS='|' read -r FULL_IMAGE ID SIZE <<< "${images[$i]}"
+            echo -e "\e${COLOR_GREEN}$((i + 1)))\e[0m $FULL_IMAGE \e[${COLOR_BLUE}($SIZE)\e[0m"
+        done
+        echo -e "\e${COLOR_BLUE}=========================================================\e[0m"
+
+        echo -e "\e${COLOR_YELLOW}操作: n-下一页 p-上一页 f-跳转 q-退出 输入编号选择\e[0m"
+        read -p "请选择: " choice
+
+        case $choice in
+            n|N)
+                if [ $(( (CURRENT_PAGE - 1) * PAGE_SIZE + PAGE_SIZE )) -lt $TOTAL_IMAGES ]; then
+                    CURRENT_PAGE=$((CURRENT_PAGE + 1))
+                else
+                    echo -e "\e${COLOR_YELLOW}已是最后一页\e[0m"
+                fi
+                ;;
+            p|P)
+                if [ $CURRENT_PAGE -gt 1 ]; then
+                    CURRENT_PAGE=$((CURRENT_PAGE - 1))
+                else
+                    echo -e "\e${COLOR_YELLOW}已是第一页\e[0m"
+                fi
+                ;;
+            q|Q) return ;;
+            *)
+                if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le $TOTAL_IMAGES ]; then
+                    confirm_and_delete "${images[$choice - 1]}"
+                    return
+                else
+                    echo -e "\e${COLOR_RED}无效选择\e[0m"
+                fi
+                ;;
+        esac
+    done
+}
+
+# 批量删除镜像
+delete_batch_images() {
+    local images=("$@")
+
+    echo -e "\e${COLOR_BLUE}=========================================================\e[0m"
+    echo -e "\e${COLOR_GREEN}批量删除镜像\e[0m"
+    echo -e "\e${COLOR_BLUE}=========================================================\e[0m"
+    echo -e "\e${COLOR_YELLOW}输入多个编号，用空格分隔 (如: 1 3 5)\e[0m"
+    echo -e "\e${COLOR_YELLOW}输入范围用横线 (如: 1-5)\e[0m"
+    echo -e "\e${COLOR_YELLOW}输入 'all' 删除所有镜像\e[0m"
+    echo -e "\e${COLOR_BLUE}=========================================================\e[0m"
+
+    read -p "请输入: " input
+
+    if [ "$input" = "all" ]; then
+        selected_indices=($(seq 1 ${#images[@]}))
+    else
+        selected_indices=()
+        for item in $input; do
+            if [[ "$item" =~ ^[0-9]+-[0-9]+$ ]]; then
+                # 处理范围
+                start=$(echo $item | cut -d'-' -f1)
+                end=$(echo $item | cut -d'-' -f2)
+                selected_indices+=($(seq $start $end))
+            elif [[ "$item" =~ ^[0-9]+$ ]]; then
+                selected_indices+=("$item")
+            fi
+        done
+    fi
+
+    if [ ${#selected_indices[@]} -eq 0 ]; then
+        echo -e "\e${COLOR_RED}无效输入\e[0m"
+        log_operation "DELETE_BATCH" "ERROR" "无效的输入: $input"
+        return
+    fi
+
+    # 显示即将删除的镜像
+    echo -e "\e${COLOR_BLUE}=========================================================\e[0m"
+    echo -e "\e${COLOR_YELLOW}即将删除 ${#selected_indices[@]} 个镜像：\e[0m"
+    echo -e "\e${COLOR_BLUE}=========================================================\e[0m"
+
+    for idx in "${selected_indices[@]}"; do
+        if [ "$idx" -ge 1 ] && [ "$idx" -le ${#images[@]} ]; then
+            IFS='|' read -r FULL_IMAGE ID SIZE <<< "${images[$idx - 1]}"
+            echo -e "  \e${COLOR_GREEN}$idx)\e[0m $FULL_IMAGE"
+        fi
+    done
+
+    echo -e "\e${COLOR_BLUE}=========================================================\e[0m"
+    read -p "确认删除? [y/N]: " confirm
+
+    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+        echo -e "\e${COLOR_YELLOW}已取消\e[0m"
+        log_operation "DELETE_BATCH" "WARNING" "用户取消批量删除"
+        return
+    fi
+
+    # 执行删除
+    local success_count=0
+    local fail_count=0
+
+    for idx in "${selected_indices[@]}"; do
+        if [ "$idx" -ge 1 ] && [ "$idx" -le ${#images[@]} ]; then
+            IFS='|' read -r FULL_IMAGE ID SIZE <<< "${images[$idx - 1]}"
+            echo -ne "\e${COLOR_BLUE}正在删除: $FULL_IMAGE ...\e[0m"
+
+            if docker rmi "$FULL_IMAGE" >/dev/null 2>&1; then
+                echo -e "\e${COLOR_GREEN}✓ 成功\e[0m"
+                log_operation "DELETE_BATCH" "SUCCESS" "删除镜像: $FULL_IMAGE"
+                ((success_count++))
+            else
+                echo -e "\e${COLOR_RED}✗ 失败\e[0m"
+                log_operation "DELETE_BATCH" "ERROR" "删除失败: $FULL_IMAGE"
+                ((fail_count++))
+            fi
+        fi
+    done
+
+    echo -e "\e${COLOR_BLUE}=========================================================\e[0m"
+    echo -e "\e${COLOR_GREEN}删除完成: 成功 $success_count 个，失败 $fail_count 个\e[0m"
+    echo -e "\e${COLOR_BLUE}=========================================================\e[0m"
+}
+
+# 智能筛选删除
+delete_smart_filter() {
+    local images=("$@")
+
+    echo -e "\e${COLOR_BLUE}=========================================================\e[0m"
+    echo -e "\e${COLOR_GREEN}智能筛选删除\e[0m"
+    echo -e "\e${COLOR_BLUE}=========================================================\e[0m"
+    echo -e "\e${COLOR_GREEN}1) 按名称模式匹配 (如: nginx*)\e[0m"
+    echo -e "\e${COLOR_GREEN}2) 删除所有 <none> 标签镜像\e[0m"
+    echo -e "\e${COLOR_GREEN}3) 按大小筛选 (删除大于指定大小的镜像)\e[0m"
+    echo -e "\e${COLOR_GREEN}4) 返回\e[0m"
+    echo -e "\e${COLOR_BLUE}=========================================================\e[0m"
+
+    read -p "请选择筛选方式: " filter_type
+
+    case $filter_type in
+        1)
+            read -p "输入名称模式 (支持通配符 *): " pattern
+            filtered=()
+            for img in "${images[@]}"; do
+                IFS='|' read -r FULL_IMAGE ID SIZE <<< "$img"
+                if [[ "$FULL_IMAGE" == $pattern ]]; then
+                    filtered+=("$img")
+                fi
+            done
+            ;;
+        2)
+            filtered=()
+            for img in "${images[@]}"; do
+                IFS='|' read -r FULL_IMAGE ID SIZE <<< "$img"
+                if [[ "$FULL_IMAGE" == *"<none>"* ]]; then
+                    filtered+=("$img")
+                fi
+            done
+            ;;
+        3)
+            read -p "输入最小大小 (如: 1GB, 500MB): " min_size
+            filtered=()
+            for img in "${images[@]}"; do
+                IFS='|' read -r FULL_IMAGE ID SIZE <<< "$img"
+                # 简化的大小比较
+                if [[ "$SIZE" == *"GB"* ]]; then
+                    filtered+=("$img")
+                fi
+            done
+            ;;
+        4) return ;;
+        *)
+            echo -e "\e${COLOR_RED}无效选择\e[0m"
+            return
+            ;;
+    esac
+
+    if [ ${#filtered[@]} -eq 0 ]; then
+        echo -e "\e${COLOR_YELLOW}没有匹配的镜像\e[0m"
+        log_operation "DELETE_SMART" "WARNING" "筛选后无匹配镜像"
+        return
+    fi
+
+    echo -e "\e${COLOR_GREEN}找到 ${#filtered[@]} 个匹配的镜像\e[0m"
+    for img in "${filtered[@]}"; do
+        IFS='|' read -r FULL_IMAGE ID SIZE <<< "$img"
+        echo -e "  - $FULL_IMAGE ($SIZE)"
+    done
+
+    read -p "确认删除这些镜像? [y/N]: " confirm
+    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+        echo -e "\e${COLOR_YELLOW}已取消\e[0m"
+        return
+    fi
+
+    local success_count=0
+    for img in "${filtered[@]}"; do
+        IFS='|' read -r FULL_IMAGE ID SIZE <<< "$img"
+        if docker rmi "$FULL_IMAGE" >/dev/null 2>&1; then
+            echo -e "\e${COLOR_GREEN}✓ 已删除: $FULL_IMAGE\e[0m"
+            log_operation "DELETE_SMART" "SUCCESS" "删除: $FULL_IMAGE"
+            ((success_count++))
+        else
+            echo -e "\e${COLOR_RED}✗ 删除失败: $FULL_IMAGE\e[0m"
+            log_operation "DELETE_SMART" "ERROR" "删除失败: $FULL_IMAGE"
+        fi
+    done
+
+    echo -e "\e${COLOR_GREEN}共删除 $success_count 个镜像\e[0m"
+}
+
+# 确认并删除
+confirm_and_delete() {
+    local image_info="$1"
+    IFS='|' read -r FULL_IMAGE ID SIZE <<< "$image_info"
+
+    # 分离仓库名和标签
+    REPO="${FULL_IMAGE%:*}"
+    TAG="${FULL_IMAGE##*:}"
+
+    echo -e "\e${COLOR_BLUE}=========================================================\e[0m"
+    echo -e "\e${COLOR_YELLOW}即将删除镜像：\e[0m"
+    echo -e "  名称: \e${COLOR_GREEN}$REPO:$TAG\e[0m"
+    echo -e "  ID: $ID"
+    echo -e "  大小: $SIZE"
+    echo -e "\e${COLOR_BLUE}=========================================================\e[0m"
+
+    read -p "确认删除? [y/N]: " confirm
+
+    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+        echo -e "\e${COLOR_YELLOW}已取消\e[0m"
+        log_operation "DELETE_SINGLE" "WARNING" "用户取消删除: $REPO:$TAG"
+        return
+    fi
+
+    echo -e "\e${COLOR_BLUE}正在删除...\e[0m"
+
+    if docker rmi "$FULL_IMAGE"; then
+        echo -e "\e${COLOR_GREEN}✓ 删除成功\e[0m"
+        log_operation "DELETE_SINGLE" "SUCCESS" "删除: $REPO:$TAG"
+    else
+        echo -e "\e${COLOR_RED}✗ 删除失败\e[0m"
+        echo -e "\e${COLOR_YELLOW}提示: 镜像可能正在被容器使用\e[0m"
+        log_operation "DELETE_SINGLE" "ERROR" "删除失败: $REPO:$TAG"
+    fi
+}
+
+# 删除远程仓库镜像
+delete_remote_images() {
+    echo -e "\e${COLOR_BLUE}=========================================================\e[0m"
+    echo -e "\e${COLOR_GREEN}🗑️  删除远程仓库镜像\e[0m"
+    echo -e "\e${COLOR_BLUE}=========================================================\e[0m"
+
+    # 选择仓库
+    select_registry
+
+    echo -e "\e${COLOR_YELLOW}⚠️  警告: 远程删除是不可逆操作!\e[0m"
+    read -p "继续? [y/N]: " confirm
+
+    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+        echo -e "\e${COLOR_YELLOW}已取消\e[0m"
+        return
+    fi
+
+    # 获取镜像列表
+    echo -e "\e${COLOR_BLUE}正在获取镜像列表...\e[0m"
+    IFS=$'\n' read -r -d '' -a REPOSITORIES < <(curl -s -X GET "https://$REGISTRY/v2/_catalog" | jq -r '.repositories[]' && printf '\0')
+
+    if [ ${#REPOSITORIES[@]} -eq 0 ]; then
+        echo -e "\e${COLOR_RED}未找到任何镜像\e[0m"
+        log_operation "DELETE_REMOTE" "WARNING" "仓库无镜像: $REGISTRY"
+        return
+    fi
+
+    # 显示镜像列表并选择
+    echo -e "\e${COLOR_BLUE}=========================================================\e[0m"
+    echo -e "\e${COLOR_GREEN}选择要删除的镜像：\e[0m"
+    echo -e "\e${COLOR_BLUE}=========================================================\e[0m"
+
+    PAGE_SIZE=20
+    CURRENT_PAGE=1
+
+    while true; do
+        clear
+        echo -e "\e${COLOR_BLUE}=========================================================\e[0m"
+        echo -e "\e${COLOR_GREEN}镜像列表 (第 $CURRENT_PAGE 页)\e[0m"
+        echo -e "\e${COLOR_BLUE}=========================================================\e[0m"
+
+        START_INDEX=$(( (CURRENT_PAGE - 1) * PAGE_SIZE ))
+        END_INDEX=$(( START_INDEX + PAGE_SIZE - 1 ))
+        if [ $END_INDEX -ge ${#REPOSITORIES[@]} ]; then
+            END_INDEX=$(( ${#REPOSITORIES[@]} - 1 ))
+        fi
+
+        for (( i=START_INDEX; i<=END_INDEX; i++ )); do
+            echo -e "\e${COLOR_GREEN}$((i + 1))) ${REPOSITORIES[$i]}\e[0m"
+        done
+        echo -e "\e${COLOR_BLUE}=========================================================\e[0m"
+
+        echo -e "\e${COLOR_YELLOW}操作: n-下一页 p-上一页 q-退出 输入编号选择\e[0m"
+        read -p "请选择: " choice
+
+        case $choice in
+            n|N)
+                if [ $END_INDEX -lt $(( ${#REPOSITORIES[@]} - 1 )) ]; then
+                    CURRENT_PAGE=$((CURRENT_PAGE + 1))
+                fi
+                ;;
+            p|P)
+                if [ $CURRENT_PAGE -gt 1 ]; then
+                    CURRENT_PAGE=$((CURRENT_PAGE - 1))
+                fi
+                ;;
+            q|Q) return ;;
+            *)
+                if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le ${#REPOSITORIES[@]} ]; then
+                    delete_remote_tags "${REPOSITORIES[$choice - 1]}"
+                    return
+                fi
+                ;;
+        esac
+    done
+}
+
+# 删除远程镜像的标签
+delete_remote_tags() {
+    local image_name="$1"
+
+    echo -e "\e${COLOR_BLUE}正在获取 $image_name 的标签列表...\e[0m"
+
+    TAGS=$(curl -s -X GET "https://$REGISTRY/v2/${image_name}/tags/list" | jq -r '.tags[]')
+
+    if [[ "$TAGS" == "null" ]] || [ -z "$TAGS" ]; then
+        echo -e "\e${COLOR_RED}未找到标签\e[0m"
+        return
+    fi
+
+    IFS=$'\n' read -r -d '' -a TAG_ARRAY < <(echo "$TAGS" && printf '\0')
+
+    echo -e "\e${COLOR_BLUE}=========================================================\e[0m"
+    echo -e "\e${COLOR_GREEN}$image_name 的标签列表：\e[0m"
+    echo -e "\e${COLOR_BLUE}=========================================================\e[0m"
+
+    for i in "${!TAG_ARRAY[@]}"; do
+        echo -e "\e${COLOR_GREEN}$((i + 1))) ${TAG_ARRAY[$i]}\e[0m"
+    done
+
+    echo -e "\e${COLOR_BLUE}=========================================================\e[0m"
+    echo -e "\e${COLOR_YELLOW}输入多个编号用空格分隔\e[0m"
+    read -p "请选择要删除的标签: " input
+
+    read -ra selected_indices <<< "$input"
+
+    if [ ${#selected_indices[@]} -eq 0 ]; then
+        echo -e "\e${COLOR_RED}无效输入\e[0m"
+        return
+    fi
+
+    # 显示即将删除的标签
+    echo -e "\e${COLOR_BLUE}=========================================================\e[0m"
+    echo -e "\e${COLOR_YELLOW}即将删除以下标签：\e[0m"
+    for idx in "${selected_indices[@]}"; do
+        if [ "$idx" -ge 1 ] && [ "$idx" -le ${#TAG_ARRAY[@]} ]; then
+            echo -e "  - ${TAG_ARRAY[$idx - 1]}"
+        fi
+    done
+    echo -e "\e${COLOR_BLUE}=========================================================\e[0m"
+
+    read -p "确认删除? [y/N]: " confirm
+    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+        echo -e "\e${COLOR_YELLOW}已取消\e[0m"
+        log_operation "DELETE_REMOTE" "WARNING" "用户取消删除: $image_name"
+        return
+    fi
+
+    # 执行删除
+    local success_count=0
+    local fail_count=0
+
+    for idx in "${selected_indices[@]}"; do
+        if [ "$idx" -ge 1 ] && [ "$idx" -le ${#TAG_ARRAY[@]} ]; then
+            local tag="${TAG_ARRAY[$idx - 1]}"
+
+            echo -ne "\e${COLOR_BLUE}正在删除: $image_name:$tag ...\e[0m"
+
+            # 获取 digest
+            local digest=$(curl -s -I -H "Accept: application/vnd.docker.distribution.manifest.v2+json" \
+                "https://$REGISTRY/v2/${image_name}/manifests/${tag}" | \
+                grep -i "Docker-Content-Digest" | \
+                awk '{print $2}' | tr -d '\r')
+
+            if [ -z "$digest" ]; then
+                echo -e "\e${COLOR_RED}✗ 无法获取 digest\e[0m"
+                log_operation "DELETE_REMOTE" "ERROR" "获取digest失败: $image_name:$tag"
+                ((fail_count++))
+                continue
+            fi
+
+            # 删除 (检查 HTTP 状态码)
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE "https://$REGISTRY/v2/${image_name}/manifests/$digest" 2>/dev/null)
+
+            if [ "$HTTP_CODE" = "202" ] || [ "$HTTP_CODE" = "200" ]; then
+                echo -e "\e${COLOR_GREEN}✓ 成功\e[0m"
+                log_operation "DELETE_REMOTE" "SUCCESS" "删除: $image_name:$tag"
+                ((success_count++))
+            elif [ "$HTTP_CODE" = "405" ]; then
+                echo -e "\e${COLOR_RED}✗ 失败 (仓库禁用删除)\e[0m"
+                log_operation "DELETE_REMOTE" "ERROR" "仓库禁用删除: $image_name:$tag (HTTP 405)"
+                ((fail_count++))
+            elif [ "$HTTP_CODE" = "401" ] || [ "$HTTP_CODE" = "403" ]; then
+                echo -e "\e${COLOR_RED}✗ 失败 (权限不足)\e[0m"
+                log_operation "DELETE_REMOTE" "ERROR" "权限不足: $image_name:$tag (HTTP $HTTP_CODE)"
+                ((fail_count++))
+            else
+                echo -e "\e${COLOR_RED}✗ 失败 (HTTP $HTTP_CODE)\e[0m"
+                log_operation "DELETE_REMOTE" "ERROR" "删除失败: $image_name:$tag (HTTP $HTTP_CODE)"
+                ((fail_count++))
+            fi
+        fi
+    done
+
+    echo -e "\e${COLOR_BLUE}=========================================================\e[0m"
+    echo -e "\e${COLOR_GREEN}删除完成: 成功 $success_count 个，失败 $fail_count 个\e[0m"
+    echo -e "\e${COLOR_BLUE}=========================================================\e[0m"
+}
+
 #  将现有的本地容器打包到镜像,然后推送到私有仓库
 #步骤概述
 #1. 提交容器为新镜像
@@ -824,6 +1351,9 @@ options=(
     $(echo -e "\e[1;32m从私有仓库拉取镜像\e[0m")
     $(echo -e "\e[1;32m推送本地镜像到私有仓库\e[0m")
     $(echo -e "\e[1;32m列出本地容器并推送到私有仓库\e[0m")
+    $(echo -e "\e[1;31m删除本地镜像\e[0m")
+    $(echo -e "\e[1;31m删除远程仓库镜像\e[0m")
+    $(echo -e "\e[1;33m查看操作日志\e[0m")
     $(echo -e "\e[1;33m修改daemon.json并重启Docker\e[0m")
     $(echo -e "\e[1;33m恢复daemon.json并重启Docker\e[0m")
     $(echo -e "\e[1;31m退出\e[0m")
@@ -840,12 +1370,24 @@ select opt in "${options[@]}"; do
             search_private_image
             break
             ;;
-        *本地镜像*)
+        *推送本地镜像*)
             push_local_images
             break
             ;;
         *本地容器*)
             docker_push_container
+            break
+            ;;
+        *删除本地镜像*)
+            delete_local_images
+            break
+            ;;
+        *删除远程*)
+            delete_remote_images
+            break
+            ;;
+        *操作日志*)
+            view_operation_log
             break
             ;;
         *修改daemon.json*)
