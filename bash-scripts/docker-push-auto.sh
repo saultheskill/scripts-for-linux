@@ -43,6 +43,200 @@ echo -e "\e[1;34m===============================================================
     fi
 fi
 
+# =============================================
+# 配置管理功能
+# =============================================
+
+CONFIG_FILE="$HOME/.docker-push-config"
+
+# 初始化配置
+init_config() {
+    DEFAULT_REGISTRY="docker.hcegcorp.com"
+    PAGE_SIZE=20
+    # 初始化空数组
+    RECENT_REGISTRIES=()
+    save_config
+    echo -e "\e${COLOR_GREEN}已创建默认配置文件: $CONFIG_FILE\e[0m"
+}
+
+# 保存配置
+save_config() {
+    cat > "$CONFIG_FILE" << EOF
+# Docker Push Script 配置文件
+# 生成时间: $(date)
+
+DEFAULT_REGISTRY="$DEFAULT_REGISTRY"
+PAGE_SIZE=$PAGE_SIZE
+
+# 最近使用的仓库列表
+EOF
+
+    # 保存最近使用的仓库
+    if [ ${#RECENT_REGISTRIES[@]} -gt 0 ]; then
+        echo "RECENT_REGISTRIES=(" >> "$CONFIG_FILE"
+        for reg in "${RECENT_REGISTRIES[@]}"; do
+            echo "    \"$reg\"" >> "$CONFIG_FILE"
+        done
+        echo ")" >> "$CONFIG_FILE"
+    else
+        echo "RECENT_REGISTRIES=()" >> "$CONFIG_FILE"
+    fi
+
+    # 设置文件权限
+    chmod 600 "$CONFIG_FILE" 2>/dev/null
+}
+
+# 加载配置
+load_config() {
+    if [ -f "$CONFIG_FILE" ]; then
+        # 验证配置文件
+        if bash -n "$CONFIG_FILE" 2>/dev/null; then
+            source "$CONFIG_FILE"
+        else
+            echo -e "\e${COLOR_YELLOW}警告: 配置文件损坏,使用默认配置\e[0m"
+            backup_config
+            init_config
+        fi
+    else
+        init_config
+    fi
+}
+
+# 备份配置文件
+backup_config() {
+    if [ -f "$CONFIG_FILE" ]; then
+        BACKUP_FILE="${CONFIG_FILE}.bak.$(date +%Y%m%d_%H%M%S)"
+        cp "$CONFIG_FILE" "$BACKUP_FILE"
+        echo -e "\e${COLOR_BLUE}已备份旧配置到: $BACKUP_FILE\e[0m"
+
+        # 只保留最近5个备份
+        ls -t ${CONFIG_FILE}.bak.* 2>/dev/null | tail -n +6 | xargs rm -f 2>/dev/null
+    fi
+}
+
+# 验证仓库地址格式
+validate_registry() {
+    local registry="$1"
+
+    # 基本格式检查
+    if [[ ! "$registry" =~ ^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,} ]] && [[ ! "$registry" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        echo -e "\e${COLOR_RED}错误: 仓库地址格式无效\e[0m"
+        return 1
+    fi
+
+    return 0
+}
+
+# 安全保存配置(带验证)
+safe_save_config() {
+    validate_registry "$DEFAULT_REGISTRY" || return 1
+    save_config
+    echo -e "\e${COLOR_GREEN}✓ 配置已保存\e[0m"
+}
+
+# 添加到历史记录
+add_to_history() {
+    local registry="$1"
+
+    # 去重并添加到历史
+    RECENT_REGISTRIES=("$registry" "${RECENT_REGISTRIES[@]}")
+
+    # 去重
+    local seen=()
+    local unique=()
+    for reg in "${RECENT_REGISTRIES[@]}"; do
+        local found=0
+        for s in "${seen[@]}"; do
+            if [[ "$s" == "$reg" ]]; then
+                found=1
+                break
+            fi
+        done
+        if [ $found -eq 0 ]; then
+            seen+=("$reg")
+            unique+=("$reg")
+        fi
+    done
+    RECENT_REGISTRIES=("${unique[@]}")
+
+    # 只保留最近10个
+    if [ ${#RECENT_REGISTRIES[@]} -gt 10 ]; then
+        RECENT_REGISTRIES=("${RECENT_REGISTRIES[@]:0:10}")
+    fi
+
+    save_config
+}
+
+# 选择仓库地址
+select_registry() {
+    echo -e "\e${COLOR_BLUE}=========================================================\e[0m"
+    echo -e "\e${COLOR_GREEN}📦 私有仓库配置\e[0m"
+    echo -e "\e${COLOR_BLUE}=========================================================\e[0m"
+    echo -e "\e${COLOR_YELLOW}当前默认仓库: \e[1;36m${DEFAULT_REGISTRY}\e[0m"
+    echo -e "\e${COLOR_BLUE}=========================================================\e[0m"
+    echo -e "\e${COLOR_GREEN}1) 使用默认仓库\e[0m"
+    echo -e "\e${COLOR_GREEN}2) 修改默认仓库\e[0m"
+    echo -e "\e${COLOR_GREEN}3) 查看最近使用的仓库\e[0m"
+    echo -e "\e${COLOR_BLUE}=========================================================\e[0m"
+
+    read -p "请选择 [1-3, 默认1]: " choice
+    choice=${choice:-1}
+
+    case $choice in
+        1)
+            REGISTRY="$DEFAULT_REGISTRY"
+            echo -e "\e${COLOR_GREEN}✓ 使用默认仓库: $REGISTRY\e[0m"
+            ;;
+        2)
+            read -p "输入新的仓库地址: " new_registry
+            if validate_registry "$new_registry"; then
+                REGISTRY="$new_registry"
+                DEFAULT_REGISTRY="$REGISTRY"
+                safe_save_config
+                add_to_history "$REGISTRY"
+                echo -e "\e${COLOR_GREEN}✓ 已更新默认仓库\e[0m"
+            else
+                echo -e "\e${COLOR_RED}✗ 仓库地址无效,使用默认仓库\e[0m"
+                REGISTRY="$DEFAULT_REGISTRY"
+            fi
+            ;;
+        3)
+            show_recent_registries
+            ;;
+        *)
+            echo -e "\e${COLOR_YELLOW}无效选择,使用默认仓库\e[0m"
+            REGISTRY="$DEFAULT_REGISTRY"
+            ;;
+    esac
+}
+
+# 显示最近使用的仓库
+show_recent_registries() {
+    if [ ${#RECENT_REGISTRIES[@]} -eq 0 ]; then
+        echo -e "\e${COLOR_YELLOW}暂无历史记录\e[0m"
+        REGISTRY="$DEFAULT_REGISTRY"
+        return
+    fi
+
+    echo -e "\e${COLOR_BLUE}最近使用的仓库:\e[0m"
+    for i in "${!RECENT_REGISTRIES[@]}"; do
+        echo -e "  \e${COLOR_GREEN}$((i+1)))\e[0m ${RECENT_REGISTRIES[$i]}"
+    done
+
+    read -p "选择编号或按回车使用默认: " sel
+    if [[ "$sel" =~ ^[0-9]+$ ]] && [ "$sel" -ge 1 ] && [ "$sel" -le ${#RECENT_REGISTRIES[@]} ]; then
+        REGISTRY="${RECENT_REGISTRIES[$sel-1]}"
+        echo -e "\e${COLOR_GREEN}✓ 已选择: $REGISTRY\e[0m"
+        add_to_history "$REGISTRY"
+    else
+        REGISTRY="$DEFAULT_REGISTRY"
+        echo -e "\e${COLOR_GREEN}✓ 使用默认仓库: $REGISTRY\e[0m"
+    fi
+}
+
+# 加载配置
+load_config
+
 #  将现有的本地容器打包到镜像,然后推送到私有仓库
 #步骤概述
 #1. 提交容器为新镜像
@@ -124,9 +318,9 @@ docker_push_container() {
 
 # 搜索私有仓库的镜像
 search_private_image() {
-    echo -e "\e${COLOR_BLUE}请输入私有仓库地址，默认为docker.hcegcorp.com：\e[0m"
-    read -r REGISTRY
-    REGISTRY=${REGISTRY:-docker.hcegcorp.com}
+    # 使用配置管理功能选择仓库
+    select_registry
+    echo ""
 
     # 获取私有仓库镜像列表，并存储在数组中
     IFS=$'\n' read -r -d '' -a REPOSITORIES < <(curl -s -X GET "https://$REGISTRY/v2/_catalog" | jq -r '.repositories[]' && printf '\0')
@@ -423,9 +617,9 @@ docker_push() {
         exit 1
     fi
     echo -e "\e${COLOR_BLUE}=========================================================\e[0m"
-    echo -e "\e${COLOR_BLUE}请输入私有仓库地址,默认为docker.hcegcorp.com\e[0m"
-    read -r REGISTRY
-    REGISTRY=${REGISTRY:-docker.hcegcorp.com}
+    # 使用配置管理功能选择仓库
+    select_registry
+    echo ""
 
     echo -e "\e${COLOR_BLUE}请输入要推送的镜像名称：\e[0m"
     echo -e "\e${COLOR_BLUE}=========================================================\e[0m"
@@ -576,9 +770,10 @@ push_local_images() {
     SELECTED_IMAGE=${IMAGES[$IMAGE_INDEX - 1]}
     echo -e "\e${COLOR_GREEN}您选择的镜像为：$SELECTED_IMAGE\e[0m"
     echo -e "\e${COLOR_BLUE}=========================================================\e[0m"
-    echo -e "\e${COLOR_BLUE}请输入私有仓库地址，默认为docker.hcegcorp.com：\e[0m"
-    read -r REGISTRY
-    REGISTRY=${REGISTRY:-docker.hcegcorp.com}
+    # 使用配置管理功能选择仓库
+    select_registry
+    echo ""
+
     # 提取镜像名和标签，移除任何存在的仓库地址
     IFS='/' read -ra ADDR <<< "$SELECTED_IMAGE"
     CLEAN_IMAGE_NAME="${ADDR[-1]}"
