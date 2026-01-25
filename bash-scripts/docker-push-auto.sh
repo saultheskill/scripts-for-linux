@@ -129,50 +129,203 @@ search_private_image() {
     REGISTRY=${REGISTRY:-docker.hcegcorp.com}
 
     # 获取私有仓库镜像列表，并存储在数组中
-    echo -e "\e${COLOR_GREEN}私有仓库列表最近推送前20,并在行的最前端打上编号,从1开始\e[0m"
-    echo -e "\e${COLOR_BLUE}=========================================================\e[0m"
     IFS=$'\n' read -r -d '' -a REPOSITORIES < <(curl -s -X GET "https://$REGISTRY/v2/_catalog" | jq -r '.repositories[]' && printf '\0')
 
-    for i in "${!REPOSITORIES[@]}"; do
-        echo -e "\e${COLOR_GREEN}$((i + 1))) ${REPOSITORIES[$i]}\e[0m"
-    done
-    echo -e "\e${COLOR_BLUE}=========================================================\e[0m"
-
-    echo -e "\e${COLOR_BLUE}请输入镜像名称或者编号：\e[0m"
-
-    read -r INPUT
-
-    # 检测输入是编号还是名称
-    if [[ "$INPUT" =~ ^[0-9]+$ ]] && [ "$INPUT" -ge 1 ] && [ "$INPUT" -le ${#REPOSITORIES[@]} ]; then
-        IMAGE_NAME="${REPOSITORIES[$INPUT - 1]}"
-    else
-        IMAGE_NAME="$INPUT"
+    if [ ${#REPOSITORIES[@]} -eq 0 ]; then
+        echo -e "\e${COLOR_RED}未找到任何镜像仓库。\e[0m"
+        exit 1
     fi
-    echo -e "\e${COLOR_BLUE}正在获取镜像的标签列表"
+
+    # 分页显示镜像列表
+    PAGE_SIZE=20
+    TOTAL_REPOS=${#REPOSITORIES[@]}
+    TOTAL_PAGES=$(( (TOTAL_REPOS + PAGE_SIZE - 1) / PAGE_SIZE ))
+    CURRENT_PAGE=1
+
+    while true; do
+        clear
+        echo -e "\e${COLOR_BLUE}=========================================================\e[0m"
+        echo -e "\e${COLOR_GREEN}私有仓库镜像列表 (第 ${CURRENT_PAGE}/${TOTAL_PAGES} 页，共 ${TOTAL_REPOS} 个镜像)\e[0m"
+        echo -e "\e${COLOR_BLUE}=========================================================\e[0m"
+
+        # 计算当前页的起始和结束索引
+        START_INDEX=$(( (CURRENT_PAGE - 1) * PAGE_SIZE ))
+        END_INDEX=$(( START_INDEX + PAGE_SIZE - 1 ))
+        if [ $END_INDEX -ge $TOTAL_REPOS ]; then
+            END_INDEX=$(( TOTAL_REPOS - 1 ))
+        fi
+
+        # 显示当前页的镜像
+        for (( i=START_INDEX; i<=END_INDEX; i++ )); do
+            echo -e "\e${COLOR_GREEN}$((i + 1))) ${REPOSITORIES[$i]}\e[0m"
+        done
+        echo -e "\e${COLOR_BLUE}=========================================================\e[0m"
+
+        # 显示操作提示
+        echo -e "\e${COLOR_YELLOW}操作说明：\e[0m"
+        echo -e "  \e${COLOR_GREEN}n\e[0m - 下一页"
+        echo -e "  \e${COLOR_GREEN}p\e[0m - 上一页"
+        echo -e "  \e${COLOR_GREEN}f\e[0m - 跳转到指定页"
+        echo -e "  \e${COLOR_GREEN}q\e[0m - 退出"
+        echo -e "  \e${COLOR_GREEN}直接输入编号\e[0m - 选择镜像"
+        echo -e "\e${COLOR_BLUE}=========================================================\e[0m"
+
+        echo -e "\e${COLOR_BLUE}请输入操作或镜像编号：\e[0m"
+        read -r INPUT
+
+        # 处理用户输入
+        case "$INPUT" in
+            n|N)
+                # 下一页
+                if [ $CURRENT_PAGE -lt $TOTAL_PAGES ]; then
+                    CURRENT_PAGE=$((CURRENT_PAGE + 1))
+                else
+                    echo -e "\e${COLOR_YELLOW}已经是最后一页了，按回车继续...\e[0m"
+                    read -r
+                fi
+                ;;
+            p|P)
+                # 上一页
+                if [ $CURRENT_PAGE -gt 1 ]; then
+                    CURRENT_PAGE=$((CURRENT_PAGE - 1))
+                else
+                    echo -e "\e${COLOR_YELLOW}已经是第一页了，按回车继续...\e[0m"
+                    read -r
+                fi
+                ;;
+            f|F)
+                # 跳转到指定页
+                echo -e "\e${COLOR_BLUE}请输入要跳转的页码 (1-${TOTAL_PAGES})：\e[0m"
+                read -r PAGE_NUM
+                if [[ "$PAGE_NUM" =~ ^[0-9]+$ ]] && [ "$PAGE_NUM" -ge 1 ] && [ "$PAGE_NUM" -le $TOTAL_PAGES ]; then
+                    CURRENT_PAGE=$PAGE_NUM
+                else
+                    echo -e "\e${COLOR_RED}无效的页码，按回车继续...\e[0m"
+                    read -r
+                fi
+                ;;
+            q|Q)
+                # 退出
+                echo -e "\e${COLOR_RED}已取消操作。\e[0m"
+                exit 0
+                ;;
+            *)
+                # 检测输入是编号还是名称
+                if [[ "$INPUT" =~ ^[0-9]+$ ]] && [ "$INPUT" -ge 1 ] && [ "$INPUT" -le $TOTAL_REPOS ]; then
+                    IMAGE_NAME="${REPOSITORIES[$INPUT - 1]}"
+                    break
+                else
+                    echo -e "\e${COLOR_RED}无效的输入，请重试。按回车继续...\e[0m"
+                    read -r
+                fi
+                ;;
+        esac
+    done
+
+    echo -e "\e${COLOR_GREEN}您选择的镜像为：${IMAGE_NAME}\e[0m"
+    echo -e "\e${COLOR_BLUE}正在获取镜像的标签列表\e[0m"
     echo -e "\e${COLOR_BLUE}=========================================================\e[0m"
     TAGS=$(curl -s -X GET "https://$REGISTRY/v2/${IMAGE_NAME}/tags/list" | jq -r '.tags[]')
 
     if [[ "$TAGS" == "null" ]] || [ -z "$TAGS" ]; then
-        echo "该镜像没有找到标签或者获取标签失败。"
+        echo -e "\e${COLOR_RED}该镜像没有找到标签或者获取标签失败。\e[0m"
         exit 1
     fi
 
-    #    echo "$TAGS" | awk '{print NR ") " $0}'
-    echo -e "\e${COLOR_BLUE}以下是可用的镜像标签（展示前20个结果）：\e[0m"
-    echo -e "\e${COLOR_BLUE}=========================================================\e[0m"
-    IFS=$'\n' read -r -d '' -a TAGS < <(echo "$TAGS" | awk '{print NR ") " $0}' && printf '\0')
-    for tag in "${TAGS[@]}"; do
-        echo -e "\e${COLOR_GREEN}$tag\e[0m"
+    # 将标签存入数组
+    IFS=$'\n' read -r -d '' -a TAG_ARRAY < <(echo "$TAGS" && printf '\0')
+
+    # 分页显示标签列表
+    TAG_PAGE_SIZE=20
+    TOTAL_TAGS=${#TAG_ARRAY[@]}
+    TAG_TOTAL_PAGES=$(( (TOTAL_TAGS + TAG_PAGE_SIZE - 1) / TAG_PAGE_SIZE ))
+    TAG_CURRENT_PAGE=1
+
+    while true; do
+        clear
+        echo -e "\e${COLOR_BLUE}=========================================================\e[0m"
+        echo -e "\e${COLOR_GREEN}镜像 ${IMAGE_NAME} 的标签列表 (第 ${TAG_CURRENT_PAGE}/${TAG_TOTAL_PAGES} 页，共 ${TOTAL_TAGS} 个标签)\e[0m"
+        echo -e "\e${COLOR_BLUE}=========================================================\e[0m"
+
+        # 计算当前页的起始和结束索引
+        TAG_START_INDEX=$(( (TAG_CURRENT_PAGE - 1) * TAG_PAGE_SIZE ))
+        TAG_END_INDEX=$(( TAG_START_INDEX + TAG_PAGE_SIZE - 1 ))
+        if [ $TAG_END_INDEX -ge $TOTAL_TAGS ]; then
+            TAG_END_INDEX=$(( TOTAL_TAGS - 1 ))
+        fi
+
+        # 显示当前页的标签
+        for (( i=TAG_START_INDEX; i<=TAG_END_INDEX; i++ )); do
+            echo -e "\e${COLOR_GREEN}$((i + 1))) ${TAG_ARRAY[$i]}\e[0m"
+        done
+        echo -e "\e${COLOR_BLUE}=========================================================\e[0m"
+
+        # 显示操作提示
+        echo -e "\e${COLOR_YELLOW}操作说明：\e[0m"
+        echo -e "  \e${COLOR_GREEN}n\e[0m - 下一页"
+        echo -e "  \e${COLOR_GREEN}p\e[0m - 上一页"
+        echo -e "  \e${COLOR_GREEN}f\e[0m - 跳转到指定页"
+        echo -e "  \e${COLOR_GREEN}q\e[0m - 退出"
+        echo -e "  \e${COLOR_GREEN}直接输入编号\e[0m - 选择标签 (按回车默认选择第1项)"
+        echo -e "\e${COLOR_BLUE}=========================================================\e[0m"
+
+        echo -e "\e${COLOR_BLUE}请输入操作或标签编号：\e[0m"
+        read -r TAG_INPUT
+
+        # 处理用户输入
+        case "$TAG_INPUT" in
+            ""|n|N)
+                # 空输入或下一页
+                if [ "$TAG_INPUT" = "" ]; then
+                    # 默认选择第一项
+                    SELECTED_TAG="${TAG_ARRAY[0]}"
+                    break
+                elif [ $TAG_CURRENT_PAGE -lt $TAG_TOTAL_PAGES ]; then
+                    TAG_CURRENT_PAGE=$((TAG_CURRENT_PAGE + 1))
+                else
+                    echo -e "\e${COLOR_YELLOW}已经是最后一页了，按回车继续...\e[0m"
+                    read -r
+                fi
+                ;;
+            p|P)
+                # 上一页
+                if [ $TAG_CURRENT_PAGE -gt 1 ]; then
+                    TAG_CURRENT_PAGE=$((TAG_CURRENT_PAGE - 1))
+                else
+                    echo -e "\e${COLOR_YELLOW}已经是第一页了，按回车继续...\e[0m"
+                    read -r
+                fi
+                ;;
+            f|F)
+                # 跳转到指定页
+                echo -e "\e${COLOR_BLUE}请输入要跳转的页码 (1-${TAG_TOTAL_PAGES})：\e[0m"
+                read -r PAGE_NUM
+                if [[ "$PAGE_NUM" =~ ^[0-9]+$ ]] && [ "$PAGE_NUM" -ge 1 ] && [ "$PAGE_NUM" -le $TAG_TOTAL_PAGES ]; then
+                    TAG_CURRENT_PAGE=$PAGE_NUM
+                else
+                    echo -e "\e${COLOR_RED}无效的页码，按回车继续...\e[0m"
+                    read -r
+                fi
+                ;;
+            q|Q)
+                # 退出
+                echo -e "\e${COLOR_RED}已取消操作。\e[0m"
+                exit 0
+                ;;
+            *)
+                # 检测输入是编号
+                if [[ "$TAG_INPUT" =~ ^[0-9]+$ ]] && [ "$TAG_INPUT" -ge 1 ] && [ "$TAG_INPUT" -le $TOTAL_TAGS ]; then
+                    SELECTED_TAG="${TAG_ARRAY[$TAG_INPUT - 1]}"
+                    break
+                else
+                    echo -e "\e${COLOR_RED}无效的输入，请重试。按回车继续...\e[0m"
+                    read -r
+                fi
+                ;;
+        esac
     done
-    echo -e "\e${COLOR_BLUE}=========================================================\e[0m"
-    echo -e "\e${COLOR_BLUE}请输入要拉取的镜像标签编号：按下enter,自动选择第一项\e[0m"
-    read -r TAG_INDEX
-    TAG_INDEX=${TAG_INDEX:-1}
-    SELECTED_TAG=$(echo "${TAGS[$TAG_INDEX - 1]}" | sed 's/^[0-9]*) //')
-    if [ -z "$SELECTED_TAG" ]; then
-        echo -e "\e${COLOR_RED}输入的编号无效。\e[0m"
-        exit 1
-    fi
+
+    echo -e "\e${COLOR_GREEN}您选择的标签为：${SELECTED_TAG}\e[0m"
 
     FULL_IMAGE_NAME="$REGISTRY/$IMAGE_NAME:$SELECTED_TAG"
 
