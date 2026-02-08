@@ -545,6 +545,15 @@ add_enhanced_config() {
 # Enhanced configurations added by zsh-plugins-install.sh
 # =============================================================================
 
+# Powerlevel10k instant prompt 配置
+# 必须在 instant prompt 启动前设置，避免与 ssh-agent 等插件的冲突
+# 可选值: verbose/quiet/off
+# - verbose: 显示警告（默认）
+# - quiet: 静默模式，不显示警告但 prompt 可能跳动
+# - off: 禁用 instant prompt
+# 推荐使用 quiet，因为 ssh-agent 插件会在启动时输出信息
+typeset -g POWERLEVEL9K_INSTANT_PROMPT=quiet
+
 # 现代化工具别名
 command -v bat >/dev/null && alias cat='bat --style=plain'
 command -v fd >/dev/null && alias find='fd'

@@ -230,7 +230,7 @@ fi
   typeset -g POWERLEVEL9K_CONTEXT_ROOT_VISUAL_IDENTIFIER_EXPANSION='👑'
 
   # 瞬时提示模式
-  typeset -g POWERLEVEL9K_INSTANT_PROMPT=verbose
+  typeset -g POWERLEVEL9K_INSTANT_PROMPT=quiet
   typeset -g POWERLEVEL9K_DISABLE_HOT_RELOAD=true
 }
 
