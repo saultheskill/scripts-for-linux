@@ -168,6 +168,105 @@ EOF
     return 0
 }
 
+# =============================================================================
+# fzf 安装函数
+# =============================================================================
+
+# 检查 fzf 是否已安装
+check_fzf_installed() {
+    if command -v fzf >/dev/null 2>&1; then
+        log_info "fzf 已安装: $(fzf --version 2>/dev/null | head -1 || echo '版本信息不可用')"
+        return 0
+    else
+        return 1
+    fi
+}
+
+# 安装 fzf
+install_fzf_package() {
+    log_info "安装 fzf..."
+
+    # 尝试使用 apt 安装
+    if apt install -y fzf 2>/dev/null; then
+        log_info "fzf 安装成功"
+        return 0
+    fi
+
+    # apt 失败，使用 git 安装
+    log_warn "apt 安装失败，尝试使用 git 安装..."
+    local fzf_dir="$HOME/.fzf"
+
+    if [ -d "$fzf_dir" ]; then
+        log_info "更新 fzf..."
+        cd "$fzf_dir" && git pull
+    else
+        log_info "克隆 fzf 仓库..."
+        git clone --depth 1 https://github.com/junegunn/fzf.git "$fzf_dir"
+    fi
+
+    # 运行安装脚本
+    "$fzf_dir/install" --all
+    return $?
+}
+
+# 配置 fzf ZSH 集成
+configure_fzf_zsh() {
+    log_info "配置 fzf ZSH 集成..."
+
+    local zshrc="$HOME/.zshrc"
+
+    if [ ! -f "$zshrc" ]; then
+        log_warn "找不到 $zshrc，跳过配置"
+        return 1
+    fi
+
+    if grep -q "# fzf configuration" "$zshrc"; then
+        log_info "fzf 已配置，跳过"
+        return 0
+    fi
+
+    cat >> "$zshrc" << 'EOF'
+
+# fzf configuration
+export FZF_DEFAULT_OPTS='--height 40% --layout=reverse --border --inline-info'
+
+# fzf ZSH 集成
+if command -v fzf >/dev/null 2>&1; then
+    source <(fzf --zsh 2>/dev/null || true)
+fi
+EOF
+
+    log_info "fzf ZSH 配置完成"
+    return 0
+}
+
+# 安装 fzf
+install_fzf() {
+    log_info "开始安装 fzf..."
+
+    if check_fzf_installed; then
+        if interactive_ask_confirmation "fzf 已安装，是否重新配置？" "false"; then
+            configure_fzf_zsh
+        fi
+        return 0
+    fi
+
+    if ! install_fzf_package; then
+        log_error "fzf 安装失败"
+        return 1
+    fi
+
+    configure_fzf_zsh
+
+    log_info "fzf 安装完成！"
+    echo
+    echo -e "${CYAN}快捷键：${RESET}"
+    echo -e "  ${GREEN}CTRL-T${RESET} - 查找文件"
+    echo -e "  ${GREEN}CTRL-R${RESET} - 搜索历史"
+    echo -e "  ${GREEN}ALT-C${RESET}  - 跳转目录"
+    return 0
+}
+
 # 主安装函数
 install_eza() {
     log_info "开始安装 eza..."
@@ -229,13 +328,27 @@ install_eza() {
 show_header() {
     clear
     echo -e "${BLUE}================================================================${RESET}"
-    echo -e "${BLUE}Eza 美化工具安装脚本${RESET}"
+    echo -e "${BLUE}美化工具安装脚本${RESET}"
     echo -e "${BLUE}版本: 1.0${RESET}"
     echo -e "${BLUE}作者: saul${RESET}"
     echo -e "${BLUE}================================================================${RESET}"
     echo
-    echo -e "${CYAN}本脚本将安装 eza（现代化的 ls 替代品）${RESET}"
-    echo -e "${CYAN}并配置 ZSH 别名和主题${RESET}"
+    echo -e "${CYAN}本脚本将安装各种命令行美化工具${RESET}"
+    echo -e "${CYAN}包括 eza（现代化的 ls）和 fzf（模糊查找器）${RESET}"
+    echo
+}
+
+# 显示菜单
+show_menu() {
+    echo
+    echo -e "${BLUE}================================================================${RESET}"
+    echo -e "${BLUE}请选择要安装的美化工具：${RESET}"
+    echo -e "${BLUE}================================================================${RESET}"
+    echo
+    echo -e "  ${CYAN}1)${RESET} eza    - 现代化的 ls 替代品（彩色列表、图标、树形显示）"
+    echo -e "  ${CYAN}2)${RESET} fzf    - 模糊查找器（快速文件查找、历史搜索）"
+    echo -e "  ${CYAN}3)${RESET} 全部   - 安装以上所有工具"
+    echo -e "  ${CYAN}0)${RESET} 退出"
     echo
 }
 
@@ -268,13 +381,40 @@ main() {
         exit 1
     fi
 
-    # 确认安装
-    if interactive_ask_confirmation "是否继续安装 eza？" "true"; then
-        install_eza
-    else
-        log_info "用户取消安装"
-        exit 0
-    fi
+    # 显示菜单
+    show_menu
+
+    # 读取用户选择
+    local choice
+    read -p "请输入选项 [0-3]: " choice
+
+    case "$choice" in
+        1)
+            if interactive_ask_confirmation "是否安装 eza？" "true"; then
+                install_eza
+            fi
+            ;;
+        2)
+            if interactive_ask_confirmation "是否安装 fzf？" "true"; then
+                install_fzf
+            fi
+            ;;
+        3)
+            if interactive_ask_confirmation "是否安装所有美化工具？" "true"; then
+                install_eza
+                echo
+                install_fzf
+            fi
+            ;;
+        0)
+            log_info "退出安装"
+            exit 0
+            ;;
+        *)
+            log_error "无效选项"
+            exit 1
+            ;;
+    esac
 }
 
 # 脚本入口点

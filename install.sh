@@ -342,7 +342,7 @@ install_docker_environment() {
 
 # 安装美化工具
 install_beautify_tools() {
-    execute_local_script "beautify/eza-install.sh" "eza美化工具"
+    execute_local_script "beautify/beautify-install.sh" "美化工具"
 }
 
 # 创建软件源管理菜单数组
