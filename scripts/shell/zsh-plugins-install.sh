@@ -354,10 +354,25 @@ verify_plugins_installation() {
 
 
 
-# 安装和配置tmux
+# 安装和配置tmux (优化版本，支持Oh My Tmux官方安装方式)
 install_tmux_config() {
-    log_info "安装和配置tmux..."
+    log_info "安装和配置tmux (Oh My Tmux)..."
     set_install_state "INSTALLING_TMUX"
+
+    # 检查依赖工具
+    local deps=("awk" "perl" "grep" "sed")
+    local missing_deps=()
+    for dep in "${deps[@]}"; do
+        if ! command -v "$dep" >/dev/null 2>&1; then
+            missing_deps+=("$dep")
+        fi
+    done
+    if [ ${#missing_deps[@]} -gt 0 ]; then
+        log_warn "缺少Oh My Tmux依赖: ${missing_deps[*]}"
+        log_info "尝试安装依赖..."
+        install_package "gawk" || true
+        install_package "perl" || true
+    fi
 
     # 检查tmux是否已安装
     if ! command -v tmux >/dev/null 2>&1; then
@@ -368,39 +383,175 @@ install_tmux_config() {
         fi
     fi
 
-    # 安装.tmux配置
+    # 检查tmux版本 (Oh My Tmux要求 >= 2.6)
+    local tmux_version
+    tmux_version=$(tmux -V 2>/dev/null | awk '{print $2}' | sed 's/[^0-9.]//g')
+    if [ -n "$tmux_version" ]; then
+        local required_version="2.6"
+        if [ "$(printf '%s\n' "$required_version" "$tmux_version" | sort -V | head -n1)" != "$required_version" ]; then
+            log_warn "tmux版本 $tmux_version 过低，Oh My Tmux需要 >= 2.6"
+            log_info "尝试更新tmux..."
+            # 尝试从源码或更新包
+        fi
+    fi
+
+    # 检查TERM环境变量
+    if [ -z "$TERM" ] || [[ "$TERM" != *"256color"* ]]; then
+        log_warn "TERM环境变量未设置或不包含256color"
+        log_info "建议在~/.bashrc或~/.zshrc中添加: export TERM=xterm-256color"
+    fi
+
+    # 选择安装方式
+    log_info "选择Oh My Tmux安装方式..."
+    local install_methods=(
+        "官方安装脚本 (推荐)"
+        "手动安装到 ~/.tmux"
+        "手动安装到 ~/.config/tmux (XDG配置目录)"
+    )
+
+    # 默认使用官方安装脚本
+    local use_official_script=true
     local tmux_config_dir="$HOME/.tmux"
+    local tmux_conf_path="$HOME/.tmux.conf"
+    local tmux_conf_local_path="$HOME/.tmux.conf.local"
+
+    # 检查是否已存在配置
+    if [ -d "$tmux_config_dir" ] || [ -f "$tmux_conf_path" ]; then
+        log_info "检测到现有tmux配置"
+        if interactive_ask_confirmation "是否重新安装Oh My Tmux？" "false"; then
+            log_info "备份并重新安装..."
+            local backup_dir="$HOME/.tmux.backup.$(date +%Y%m%d%H%M%S)"
+            mv "$tmux_config_dir" "$backup_dir" 2>/dev/null || true
+            mv "$tmux_conf_path" "$backup_dir/" 2>/dev/null || true
+            mv "$tmux_conf_local_path" "$backup_dir/" 2>/dev/null || true
+            log_info "已备份到: $backup_dir"
+        else
+            log_info "跳过安装"
+            return 0
+        fi
+    fi
+
+    # 方式1: 使用官方安装脚本
+    if [ "$use_official_script" = true ]; then
+        log_info "使用Oh My Tmux官方安装脚本..."
+        local install_script_url="https://github.com/gpakosz/.tmux/raw/refs/heads/master/install.sh"
+
+        # 下载并执行安装脚本
+        local temp_install_script=$(mktemp)
+        if curl -fsSL "$install_script_url" -o "$temp_install_script" 2>/dev/null; then
+            if bash "$temp_install_script" 2>/dev/null; then
+                log_info "Oh My Tmux官方安装完成"
+                add_rollback_action "rm -rf '$HOME/.tmux' '$HOME/.tmux.conf' '$HOME/.tmux.conf.local'"
+                rm -f "$temp_install_script"
+
+                # 配置Powerline字体支持
+                configure_tmux_powerline
+
+                # 显示快捷键帮助
+                show_tmux_key_bindings
+
+                return 0
+            else
+                log_warn "官方安装脚本执行失败，尝试手动安装..."
+            fi
+        else
+            log_warn "下载官方安装脚本失败，尝试手动安装..."
+        fi
+        rm -f "$temp_install_script"
+    fi
+
+    # 方式2: 手动安装
+    log_info "手动安装Oh My Tmux..."
     if [ ! -d "$tmux_config_dir" ]; then
-        log_info "克隆.tmux配置..."
-        if git clone --depth=1 "$TMUX_CONFIG_REPO" "$tmux_config_dir" 2>/dev/null; then
-            log_info ".tmux配置克隆成功"
+        log_info "克隆Oh My Tmux配置..."
+        if git clone --single-branch "$TMUX_CONFIG_REPO" "$tmux_config_dir" 2>/dev/null; then
+            log_info "Oh My Tmux克隆成功"
             add_rollback_action "rm -rf '$tmux_config_dir'"
 
             # 创建符号链接
-            if ln -sf "$tmux_config_dir/.tmux.conf" "$HOME/.tmux.conf" 2>/dev/null; then
+            if ln -sf "$tmux_config_dir/.tmux.conf" "$tmux_conf_path" 2>/dev/null; then
                 log_info "创建.tmux.conf符号链接成功"
-                add_rollback_action "rm -f '$HOME/.tmux.conf'"
+                add_rollback_action "rm -f '$tmux_conf_path'"
             else
                 log_warn "创建.tmux.conf符号链接失败"
             fi
 
             # 复制本地配置文件
-            if cp "$tmux_config_dir/.tmux.conf.local" "$HOME/.tmux.conf.local" 2>/dev/null; then
+            if cp "$tmux_config_dir/.tmux.conf.local" "$tmux_conf_local_path" 2>/dev/null; then
                 log_info "复制.tmux.conf.local成功"
-                add_rollback_action "rm -f '$HOME/.tmux.conf.local'"
+                add_rollback_action "rm -f '$tmux_conf_local_path'"
             else
                 log_warn "复制.tmux.conf.local失败"
             fi
 
+            # 配置Powerline字体支持
+            configure_tmux_powerline
+
+            # 显示快捷键帮助
+            show_tmux_key_bindings
+
             return 0
         else
-            log_warn ".tmux配置安装失败"
+            log_warn "Oh My Tmux克隆失败"
             return 1
         fi
     else
-        log_info ".tmux配置已存在，跳过"
+        log_info "Oh My Tmux配置已存在，跳过"
         return 0
     fi
+}
+
+# 配置tmux Powerline字体支持
+configure_tmux_powerline() {
+    log_info "配置tmux Powerline字体支持..."
+
+    local tmux_conf_local="$HOME/.tmux.conf.local"
+
+    if [ -f "$tmux_conf_local" ]; then
+        # 检查是否已配置Powerline
+        if ! grep -q "tmux_conf_theme_left_separator_main" "$tmux_conf_local"; then
+            log_info "启用Powerline符号..."
+            cat >> "$tmux_conf_local" << 'EOF'
+
+# ==============================================
+# Powerline 字体配置 (自动添加)
+# ==============================================
+# 需要安装Powerline字体: https://github.com/powerline/fonts
+# 或使用Nerd Fonts: https://www.nerdfonts.com/
+tmux_conf_theme_left_separator_main='\uE0B0'
+tmux_conf_theme_left_separator_sub='\uE0B1'
+tmux_conf_theme_right_separator_main='\uE0B2'
+tmux_conf_theme_right_separator_sub='\uE0B3'
+EOF
+            log_info "Powerline配置已添加到 $tmux_conf_local"
+        fi
+    fi
+}
+
+# 显示tmux快捷键帮助
+show_tmux_key_bindings() {
+    log_info "tmux快捷键说明:"
+    echo
+    echo -e "${CYAN}前缀键:${RESET} Ctrl+a 或 Ctrl+b"
+    echo
+    echo -e "${CYAN}常用快捷键:${RESET}"
+    echo -e "  ${GREEN}<prefix> c${RESET}      - 创建新窗口"
+    echo -e "  ${GREEN}<prefix> -${RESET}      - 垂直分割窗格"
+    echo -e "  ${GREEN}<prefix> _${RESET}      - 水平分割窗格"
+    echo -e "  ${GREEN}<prefix> h/j/k/l${RESET} - 在窗格间导航(Vim风格)"
+    echo -e "  ${GREEN}<prefix> +${RESET}      - 最大化当前窗格到新窗口"
+    echo -e "  ${GREEN}<prefix> m${RESET}      - 切换鼠标模式"
+    echo -e "  ${GREEN}<prefix> e${RESET}      - 编辑.tmux.conf.local配置"
+    echo -e "  ${GREEN}<prefix> r${RESET}      - 重新加载配置"
+    echo -e "  ${GREEN}<prefix> Enter${RESET}  - 进入复制模式"
+    echo
+    echo -e "${CYAN}复制模式快捷键:${RESET}"
+    echo -e "  ${GREEN}v${RESET}       - 开始选择"
+    echo -e "  ${GREEN}y${RESET}       - 复制到剪贴板"
+    echo -e "  ${GREEN}Escape${RESET}  - 取消"
+    echo
+    echo -e "${YELLOW}提示: 按 <prefix> + e 编辑配置，<prefix> + r 重新加载${RESET}"
+    echo
 }
 
 # =============================================================================
