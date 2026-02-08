@@ -769,10 +769,35 @@ show_installation_summary() {
             echo -e "  ✅ Powerlevel10k: $([ -d "$ZSH_THEMES_DIR/powerlevel10k" ] && echo '已安装' || echo '未安装')"
             echo -e "  ✅ 基础配置: $([ -f "$HOME/.zshrc" ] && echo '已生成' || echo '未生成')"
             echo
-            echo -e "${YELLOW}下一步操作：${RESET}"
+
+            # 询问是否设置为默认 shell
+            if interactive_ask_confirmation "是否将 ZSH 设置为默认 Shell？" "true"; then
+                log_info "正在设置 ZSH 为默认 Shell..."
+                if command -v zsh >/dev/null 2>&1; then
+                    local zsh_path
+                    zsh_path=$(which zsh)
+                    if chsh -s "$zsh_path"; then
+                        log_info "ZSH 已成功设置为默认 Shell"
+                        echo -e "${GREEN}✅ 默认 Shell 已更改为: $zsh_path${RESET}"
+                        echo -e "${YELLOW}💡 请重新登录以使用 ZSH${RESET}"
+                    else
+                        log_error "设置默认 Shell 失败"
+                        echo -e "${RED}❌ 设置默认 Shell 失败${RESET}"
+                        echo -e "${YELLOW}💡 您可以手动运行: ${CYAN}chsh -s \$(which zsh)${RESET}"
+                    fi
+                else
+                    log_error "找不到 ZSH 命令"
+                    echo -e "${RED}❌ 找不到 ZSH 命令${RESET}"
+                fi
+            else
+                log_info "用户选择不设置 ZSH 为默认 Shell"
+                echo -e "${YELLOW}💡 您可以稍后手动运行: ${CYAN}chsh -s \$(which zsh)${RESET}"
+            fi
+
+            echo
+            echo -e "${CYAN}下一步操作：${RESET}"
             echo -e "  1. 运行 ${CYAN}zsh-plugins-install.sh${RESET} 安装插件"
-            echo -e "  2. 或者运行 ${CYAN}chsh -s \$(which zsh)${RESET} 设置为默认shell"
-            echo -e "  3. 重新登录或运行 ${CYAN}zsh${RESET} 开始使用"
+            echo -e "  2. 重新登录或运行 ${CYAN}zsh${RESET} 开始使用"
             ;;
         "failed")
             echo -e "${RED}❌ ZSH核心环境安装失败${RESET}"
