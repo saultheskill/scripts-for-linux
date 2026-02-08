@@ -545,6 +545,8 @@ configure_tmux_resurrect_plugins() {
     # 检查是否已配置
     if grep -q "tmux-plugins/tmux-resurrect" "$tmux_conf_local"; then
         log_info "tmux-resurrect 插件已配置，跳过"
+        # 仍然检查并安装插件文件
+        install_tmux_resurrect_plugins
         return 0
     fi
 
@@ -555,13 +557,6 @@ configure_tmux_resurrect_plugins() {
 # ==============================================
 # Tmux Resurrect & Continuum 插件配置
 # ==============================================
-# 安装说明:
-#   1. 克隆插件到 ~/.tmux/plugins/:
-#      git clone https://github.com/tmux-plugins/tmux-resurrect ~/.tmux/plugins/tmux-resurrect
-#      git clone https://github.com/tmux-plugins/tmux-continuum ~/.tmux/plugins/tmux-continuum
-#
-#   2. 按 <prefix> + I 安装插件 (如果已安装 TPM)
-#
 # 功能说明:
 #   - tmux-resurrect: 保存和恢复 tmux 会话
 #     * prefix + Ctrl-s : 手动保存会话
@@ -570,10 +565,6 @@ configure_tmux_resurrect_plugins() {
 #   - tmux-continuum: 自动保存和恢复
 #     * 每 15 分钟自动保存
 #     * 启动 tmux 时自动恢复上次会话
-
-# 插件列表 (需要 TPM - Tmux Plugin Manager)
-set -g @plugin 'tmux-plugins/tmux-resurrect'
-set -g @plugin 'tmux-plugins/tmux-continuum'
 
 # 启用自动恢复 (tmux 启动时自动恢复上次会话)
 set -g @continuum-restore 'on'
@@ -596,12 +587,108 @@ set -g @resurrect-processes 'ssh docker docker-compose npm node python python3'
 EOF
 
     log_info "tmux-resurrect 和 tmux-continuum 配置已添加"
-    log_info "请手动克隆插件或安装 TPM 后按 <prefix> + I 安装"
 
-    # 显示插件快捷键
-    show_tmux_resurrect_bindings
+    # 安装插件文件
+    install_tmux_resurrect_plugins
 
     return 0
+}
+
+# 安装 tmux-resurrect 和 tmux-continuum 插件文件
+install_tmux_resurrect_plugins() {
+    log_info "安装 tmux-resurrect 和 tmux-continuum 插件..."
+
+    local plugins_dir="$HOME/.tmux/plugins"
+    local resurrect_dir="$plugins_dir/tmux-resurrect"
+    local continuum_dir="$plugins_dir/tmux-continuum"
+    local install_count=0
+
+    # 创建插件目录
+    mkdir -p "$plugins_dir"
+
+    # 安装 tmux-resurrect
+    if [ -d "$resurrect_dir/.git" ]; then
+        log_info "tmux-resurrect 已安装，检查更新..."
+        if git -C "$resurrect_dir" pull --quiet 2>/dev/null; then
+            log_info "tmux-resurrect 已更新到最新版本"
+        else
+            log_warn "tmux-resurrect 更新失败，使用现有版本"
+        fi
+        install_count=$((install_count + 1))
+    else
+        log_info "克隆 tmux-resurrect..."
+        if git clone --quiet "https://github.com/tmux-plugins/tmux-resurrect" "$resurrect_dir" 2>/dev/null; then
+            log_success "tmux-resurrect 安装成功"
+            install_count=$((install_count + 1))
+        else
+            log_error "tmux-resurrect 克隆失败"
+        fi
+    fi
+
+    # 安装 tmux-continuum
+    if [ -d "$continuum_dir/.git" ]; then
+        log_info "tmux-continuum 已安装，检查更新..."
+        if git -C "$continuum_dir" pull --quiet 2>/dev/null; then
+            log_info "tmux-continuum 已更新到最新版本"
+        else
+            log_warn "tmux-continuum 更新失败，使用现有版本"
+        fi
+        install_count=$((install_count + 1))
+    else
+        log_info "克隆 tmux-continuum..."
+        if git clone --quiet "https://github.com/tmux-plugins/tmux-continuum" "$continuum_dir" 2>/dev/null; then
+            log_success "tmux-continuum 安装成功"
+            install_count=$((install_count + 1))
+        else
+            log_error "tmux-continuum 克隆失败"
+        fi
+    fi
+
+    # 配置插件自动加载（添加到 .tmux.conf.local）
+    configure_tmux_plugin_loader
+
+    # 显示插件快捷键
+    if [ $install_count -gt 0 ]; then
+        show_tmux_resurrect_bindings
+    fi
+
+    return 0
+}
+
+# 配置 tmux 插件加载器
+configure_tmux_plugin_loader() {
+    local tmux_conf_local="$HOME/.tmux.conf.local"
+    local plugins_dir="$HOME/.tmux/plugins"
+
+    # 检查是否已配置插件加载
+    if grep -q "run-shell.*resurrect.tmux" "$tmux_conf_local" 2>/dev/null; then
+        log_debug "插件加载器已配置"
+        return 0
+    fi
+
+    log_info "配置插件自动加载..."
+
+    cat >> "$tmux_conf_local" << 'EOF'
+
+# ==============================================
+# 插件加载配置
+# ==============================================
+EOF
+
+    # 添加 tmux-resurrect 加载
+    if [ -f "$plugins_dir/tmux-resurrect/resurrect.tmux" ]; then
+        echo "run-shell $plugins_dir/tmux-resurrect/resurrect.tmux" >> "$tmux_conf_local"
+        log_info "tmux-resurrect 加载配置已添加"
+    fi
+
+    # 添加 tmux-continuum 加载
+    if [ -f "$plugins_dir/tmux-continuum/continuum.tmux" ]; then
+        echo "run-shell $plugins_dir/tmux-continuum/continuum.tmux" >> "$tmux_conf_local"
+        log_info "tmux-continuum 加载配置已添加"
+    fi
+
+    log_info "插件将在下次启动 tmux 时生效"
+    log_info "当前 tmux 会话请运行: tmux source-file ~/.tmux.conf.local"
 }
 
 # 显示 tmux-resurrect 快捷键
@@ -623,9 +710,7 @@ show_tmux_resurrect_bindings() {
     echo -e "  • 运行的程序 (vim, htop, docker, ssh 等)"
     echo -e "  • 活动窗格和窗口状态"
     echo
-    echo -e "${YELLOW}注意:${RESET} 需要安装插件后才能使用上述功能"
-    echo -e "      运行: ${CYAN}git clone https://github.com/tmux-plugins/tmux-resurrect ~/.tmux/plugins/tmux-resurrect${RESET}"
-    echo -e "      运行: ${CYAN}git clone https://github.com/tmux-plugins/tmux-continuum ~/.tmux/plugins/tmux-continuum${RESET}"
+    echo -e "${YELLOW}提示:${RESET} 重新启动 tmux 或运行 ${CYAN}tmux source-file ~/.tmux.conf.local${RESET} 使插件生效"
     echo
 }
 
