@@ -106,28 +106,33 @@ add_sshkey() {
     fi
 }
 
-#PS3="请选择操作："
-PS3=$(echo -e "\e[1;36m请选择操作：\e[0m")
-options=(
-    $(echo -e "\e[1;32m生成密钥\e[0m")
-    $(echo -e "\e[1;34m添加公钥到服务器\e[0m")
-    $(echo -e "\e[1;31m退出\e[0m")
-)
-COLUMNS=1
-select action in "${options[@]}"; do
-    case $action in
-        *生成密钥*)
+# 主菜单循环
+while true; do
+    # 定义菜单选项
+    local menu_options=(
+        "生成密钥"
+        "添加公钥到服务器"
+        "退出"
+    )
+
+    # 使用 select_menu 显示菜单
+    select_menu "menu_options" "请选择操作：" 0
+
+    case $MENU_SELECT_INDEX in
+        0)
             generate_sshkey
             ;;
-        *添加公钥到服务器*)
+        1)
             add_sshkey
             ;;
-        *退出*)
+        2)
+            log_info "退出脚本"
             break
             ;;
         *)
-            echo -e "\e[1;31m无效的选择，请重新选择。\e[0m"
+            log_error "无效的选择，请重新选择"
             ;;
     esac
 done
-echo -e "\e[1;34m================================================================\e[0m"
+
+show_footer

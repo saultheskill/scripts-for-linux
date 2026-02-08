@@ -2,15 +2,27 @@
 set -euo pipefail
 
 # ==============================================
-# 1. 权限检查（必须以 root 运行）
+# 1. 导入通用函数库
 # ==============================================
-if [ "$(id -u)" -ne 0 ]; then
-    echo "错误：请使用 sudo 运行此脚本（需 root 权限）"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+
+if [ -f "$SCRIPT_DIR/../common.sh" ]; then
+    source "$SCRIPT_DIR/../common.sh"
+else
+    echo "错误：找不到 common.sh 文件"
     exit 1
 fi
 
 # ==============================================
-# 2. 依赖检查（安装必要工具）
+# 2. 权限检查（必须以 root 运行）
+# ==============================================
+if [ "$(id -u)" -ne 0 ]; then
+    log_error "请使用 sudo 运行此脚本（需 root 权限）"
+    exit 1
+fi
+
+# ==============================================
+# 3. 依赖检查（安装必要工具）
 # ==============================================
 required_tools=("fdisk" "parted" "mkfs.ext4" "lsblk" "awk" "grep" "sed" "partprobe" "udevadm" "wipefs" "lsof")
 missing_tools=()
@@ -32,14 +44,14 @@ if [ ${#missing_tools[@]} -gt 0 ]; then
 fi
 
 # ==============================================
-# 3. 获取系统盘设备名（正确识别物理磁盘）
+# 4. 获取系统盘设备名（正确识别物理磁盘）
 # ==============================================
 system_partition=$(df / | awk 'NR==2 {print $1}')
 system_disk=$(echo "$system_partition" | sed 's/[0-9]*$//' | xargs basename)
 echo "检测到系统盘为：/dev/$system_disk（已自动过滤）"
 
 # ==============================================
-# 4. 列出可用磁盘（排除系统盘和虚拟设备）
+# 5. 列出可用磁盘（排除系统盘和虚拟设备）
 # ==============================================
 echo -e "\n==================== 可用磁盘列表 ===================="
 disk_list=($(
@@ -61,38 +73,37 @@ fi
 echo "注：以上为可格式化的外部存储设备，系统盘已自动过滤"
 
 # ==============================================
-# 5. 用户选择目标磁盘（带输入验证）
+# 6. 用户选择目标磁盘（使用 select_menu）
 # ==============================================
-read -p $'\n请输入要格式化的磁盘序号（如 1）: ' disk_idx
+# 构建磁盘选项数组
+disk_options=()
+for disk in "${disk_list[@]}"; do
+    disk_size=$(lsblk -d -o SIZE "/dev/$disk" | tail -n 1)
+    disk_options+=("/dev/$disk ($disk_size)")
+done
 
-if ! [[ "$disk_idx" =~ ^[0-9]+$ ]]; then
-    echo "错误：输入必须为数字"
-    exit 1
-fi
+# 使用 select_menu 选择磁盘
+select_menu "disk_options" "请选择要格式化的磁盘：" 0
+disk_idx=$((MENU_SELECT_INDEX + 1))
 
-disk_count=${#disk_list[@]}
-if [ "$disk_idx" -lt 1 ] || [ "$disk_idx" -gt "$disk_count" ]; then
-    echo "错误：输入序号超出范围（有效范围：1-$disk_count）"
-    exit 1
-fi
-
-target_disk="/dev/${disk_list[$((disk_idx-1))]}"
+target_disk="/dev/${disk_list[$MENU_SELECT_INDEX]}"
 
 if ! lsblk "$target_disk" &> /dev/null; then
-    echo "错误：磁盘 $target_disk 不存在（可能已被移除）"
+    log_error "磁盘 $target_disk 不存在（可能已被移除）"
     exit 1
 fi
 
 # ==============================================
-# 6. 数据丢失确认（强提示）
+# 7. 数据丢失确认（使用 interactive_ask_confirmation）
 # ==============================================
 disk_size=$(lsblk -d -o SIZE "$target_disk" | tail -n 1)
-echo -e "\n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-echo "警告：即将格式化磁盘 $target_disk（容量 $disk_size）"
-echo "此操作将删除该磁盘的所有分区和数据！！！"
-read -p "请确认是否继续？（输入 YES 继续，其他退出）: " confirm
-if [ "$confirm" != "YES" ]; then
-    echo "已取消格式化操作"
+echo -e "\n${RED}!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!${RESET}"
+echo "${RED}警告：即将格式化磁盘 $target_disk（容量 $disk_size）${RESET}"
+echo "${RED}此操作将删除该磁盘的所有分区和数据！！！${RESET}"
+echo -e "${RED}!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!${RESET}"
+
+if ! interactive_ask_confirmation "确认要格式化磁盘 $target_disk 吗？此操作不可恢复！" "false"; then
+    log_info "已取消格式化操作"
     exit 1
 fi
 

@@ -458,22 +458,7 @@ show_header() {
     echo
 }
 
-# 显示菜单
-show_menu() {
-    echo
-    echo -e "${BLUE}================================================================${RESET}"
-    echo -e "${BLUE}请选择要安装的美化工具：${RESET}"
-    echo -e "${BLUE}================================================================${RESET}"
-    echo
-    echo -e "  ${CYAN}1)${RESET} eza    - 现代化的 ls 替代品（彩色列表、图标、树形显示）"
-    echo -e "  ${CYAN}2)${RESET} fzf    - 模糊查找器（快速文件查找、历史搜索、文件预览）"
-    echo -e "  ${CYAN}3)${RESET} bat    - 语法高亮文件查看器（配合 fzf 预览使用）"
-    echo -e "  ${CYAN}4)${RESET} 全部   - 安装以上所有工具"
-    echo -e "  ${CYAN}0)${RESET} 退出"
-    echo
-}
-
-# 主函数
+# 主函数 - 使用 select_menu 进行菜单选择
 main() {
     show_header
 
@@ -502,20 +487,25 @@ main() {
         exit 1
     fi
 
-    # 显示菜单
-    show_menu
+    # 定义菜单选项数组
+    local menu_options=(
+        "eza    - 现代化的 ls 替代品（彩色列表、图标、树形显示）"
+        "fzf    - 模糊查找器（快速文件查找、历史搜索、文件预览）"
+        "bat    - 语法高亮文件查看器（配合 fzf 预览使用）"
+        "全部   - 安装以上所有工具"
+        "退出"
+    )
 
-    # 读取用户选择
-    local choice
-    read -p "请输入选项 [0-4]: " choice
+    # 使用 select_menu 显示菜单
+    select_menu "menu_options" "请选择要安装的美化工具：" 0
 
-    case "$choice" in
-        1)
+    case $MENU_SELECT_INDEX in
+        0)
             if interactive_ask_confirmation "是否安装 eza？" "true"; then
                 install_eza
             fi
             ;;
-        2)
+        1)
             if interactive_ask_confirmation "是否安装 fzf？" "true"; then
                 # 建议先安装 bat 以获得更好的预览体验
                 if ! check_bat_installed; then
@@ -527,12 +517,12 @@ main() {
                 install_fzf
             fi
             ;;
-        3)
+        2)
             if interactive_ask_confirmation "是否安装 bat？" "true"; then
                 install_bat
             fi
             ;;
-        4)
+        3)
             if interactive_ask_confirmation "是否安装所有美化工具？" "true"; then
                 install_eza
                 echo
@@ -541,7 +531,7 @@ main() {
                 install_fzf
             fi
             ;;
-        0)
+        4)
             log_info "退出安装"
             exit 0
             ;;
