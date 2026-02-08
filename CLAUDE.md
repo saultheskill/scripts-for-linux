@@ -20,6 +20,8 @@ scripts-for-linux/
 ├── scripts/security/       # SSH configuration
 ├── scripts/system/         # Time sync and system config
 ├── scripts/utilities/      # Disk formatting tools
+├── scripts/beautify/       # Beautify tools (eza, fzf, bat)
+├── scripts/software/       # Common software installation
 └── bash-scripts/           # Standalone advanced tools (docker-push-auto.sh, etc.)
 ```
 
@@ -33,8 +35,9 @@ scripts-for-linux/
 
 2. **Modular ZSH Installation**: Split into two independent scripts:
    - `zsh-core-install.sh`: ZSH shell, Oh My Zsh, Powerlevel10k theme
-   - `zsh-plugins-install.sh`: Plugins (autosuggestions, syntax-highlighting, zoxide, tmux)
+   - `zsh-plugins-install.sh`: Plugins (autosuggestions, syntax-highlighting, zoxide, tmux, ssh-agent)
    - Core must be installed before plugins; plugins script checks for core installation
+   - ZSH plugins include: git, extract, systemadmin, zsh-interactive-cd, systemd, sudo, docker, ubuntu, man, command-not-found, common-aliases, docker-compose, zsh-autosuggestions, zsh-syntax-highlighting, tmux, you-should-use, ssh-agent
 
 3. **Error Handling Strategy**:
    - `set -e` for immediate exit on errors
@@ -71,13 +74,16 @@ bash install.sh
 # Individual modules (can run standalone)
 bash scripts/shell/zsh-core-install.sh
 bash scripts/shell/zsh-plugins-install.sh
+bash scripts/shell/zsh-plugins-install.sh --tmux-help  # Show tmux key bindings
 bash scripts/containers/docker-install.sh
 bash scripts/development/nvim-setup.sh
 bash scripts/security/ssh-config.sh
+bash scripts/beautify/beautify-install.sh  # Install eza, fzf, bat
 
 # Advanced standalone tools
 bash bash-scripts/docker-push-auto.sh
 bash bash-scripts/harbor-push-auto.sh
+bash bash-scripts/ssh-agent-auto.sh
 ```
 
 ### Project Maintenance
@@ -137,6 +143,13 @@ The `install.sh` script uses external mirror configuration scripts:
 - ZSH configs are backed up to `~/.zshrc.backup.*` before modification
 - Docker push tool stores config in `~/.docker-push-config`
 - Themes are in `themes/powerlevel10k/` (dracula, rainbow, emoji variants)
+- Eza theme config: `~/.config/eza/theme.yml`
+
+### Environment Variables
+
+- `INSTALLER_CALLED=1`: Set by `install.sh` when calling sub-scripts to skip duplicate confirmations
+- `LOG_LEVEL=0`: Enable DEBUG level logging (0=DEBUG, 1=INFO, 2=WARN, 3=ERROR)
+- `TERM=xterm-256color`: Required for proper color support
 
 ## Testing Considerations
 
@@ -144,3 +157,13 @@ The `install.sh` script uses external mirror configuration scripts:
 - ARM64 support varies by script (check `zsh-arm.sh` vs `zsh-core-install.sh`)
 - Network connectivity is checked before downloads
 - All scripts can run in non-interactive mode with sensible defaults
+
+## Recent Updates
+
+### 2025-02-08
+- Added `scripts/beautify/` module with eza, fzf (0.67.0), bat support
+- Added ssh-agent plugin to ZSH configuration
+- Fixed Powerlevel10k instant prompt compatibility with ssh-agent
+- Unified all scripts to use `select_menu` and `interactive_ask_confirmation` from `common.sh`
+- Added `--tmux-help` flag to `zsh-plugins-install.sh` for displaying tmux key bindings
+- Optimized `install_tmux_config()` to use official Oh My Tmux installation script
