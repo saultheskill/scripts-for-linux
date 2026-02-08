@@ -227,8 +227,8 @@ configure_fzf_zsh() {
 
     cat >> "$zshrc" << 'EOF'
 
-# fzf configuration
-export FZF_DEFAULT_OPTS='--height 40% --layout=reverse --border --inline-info'
+# fzf configuration - 使用 full 预设主题
+export FZF_DEFAULT_OPTS='--style full --height 40% --layout=reverse --border --inline-info'
 
 # fzf ZSH 集成 - 自动检测安装路径
 __fzf_setup() {
