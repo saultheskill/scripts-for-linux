@@ -235,6 +235,7 @@ cleanup_apt_config() {
 
 # 安装常用软件（改进版，带详细进度显示和触发器优化）
 install_common_software() {
+    log_debug "进入 install_common_software() 函数"
     log_info "开始安装常用软件..."
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
 
@@ -485,9 +486,14 @@ is_sourced() {
 }
 
 # 脚本入口点
+log_debug "脚本入口判断: BASH_SOURCE[0]=${BASH_SOURCE[0]}, \$0=${0}"
+log_debug "是否相等: $([[ "${BASH_SOURCE[0]}" == "${0}" ]] && echo '是' || echo '否')"
+
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    log_debug "进入 main() 分支"
     main "$@"
 else
+    log_debug "进入直接安装分支（被调用）"
     # 被其他脚本调用时，直接执行安装（跳过确认）
     install_common_software
 fi

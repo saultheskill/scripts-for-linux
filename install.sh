@@ -221,15 +221,22 @@ execute_local_script() {
 
     # 执行本地脚本
     log_info "执行本地脚本..."
+    log_debug "脚本文件: $script_file"
+    log_debug "当前 shell: $$, 子shell将执行脚本"
 
     # 临时禁用错误处理，手动处理退出码
     set +e
     (
+        log_debug "子shell启动, BASH_SOURCE[0]=${BASH_SOURCE[0]}, \$0=${0}"
         # 在子shell中执行脚本，避免exit语句影响主脚本
         bash "$script_file"
+        local sub_exit_code=$?
+        log_debug "子shell执行完毕, 退出码: $sub_exit_code"
+        exit $sub_exit_code
     )
     local exit_code=$?
     set -e
+    log_debug "子shell已返回, 退出码: $exit_code"
 
     if [ $exit_code -eq 0 ]; then
         log_info "$script_name 执行成功"
