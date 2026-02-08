@@ -618,7 +618,7 @@ install_tmux_resurrect_plugins() {
     else
         log_info "克隆 tmux-resurrect..."
         if git clone --quiet "https://github.com/tmux-plugins/tmux-resurrect" "$resurrect_dir" 2>/dev/null; then
-            log_success "tmux-resurrect 安装成功"
+            log_info "tmux-resurrect 安装成功"
             install_count=$((install_count + 1))
         else
             log_error "tmux-resurrect 克隆失败"
@@ -637,7 +637,7 @@ install_tmux_resurrect_plugins() {
     else
         log_info "克隆 tmux-continuum..."
         if git clone --quiet "https://github.com/tmux-plugins/tmux-continuum" "$continuum_dir" 2>/dev/null; then
-            log_success "tmux-continuum 安装成功"
+            log_info "tmux-continuum 安装成功"
             install_count=$((install_count + 1))
         else
             log_error "tmux-continuum 克隆失败"
