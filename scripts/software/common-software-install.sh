@@ -487,4 +487,7 @@ is_sourced() {
 # 脚本入口点
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     main "$@"
+else
+    # 被其他脚本调用时，直接执行安装（跳过确认）
+    install_common_software
 fi
