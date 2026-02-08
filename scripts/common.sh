@@ -70,7 +70,10 @@ log_debug() {
     local blue_color="${BLUE:-}"
     local reset_color="${RESET:-}"
     # 只在DEBUG级别时显示
-    [ ${LOG_LEVEL:-1} -le $LOG_DEBUG ] && echo -e "${blue_color}[DEBUG] $(date '+%Y-%m-%d %H:%M:%S') $1${reset_color}"
+    if [ ${LOG_LEVEL:-1} -le $LOG_DEBUG ]; then
+        echo -e "${blue_color}[DEBUG] $(date '+%Y-%m-%d %H:%M:%S') $1${reset_color}"
+    fi
+    return 0
 }
 
 # 执行命令并记录详细日志
