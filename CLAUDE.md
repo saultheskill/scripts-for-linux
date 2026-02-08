@@ -78,7 +78,7 @@ bash scripts/shell/zsh-plugins-install.sh --tmux-help  # Show tmux key bindings
 bash scripts/containers/docker-install.sh
 bash scripts/development/nvim-setup.sh
 bash scripts/security/ssh-config.sh
-bash scripts/beautify/beautify-install.sh  # Install eza, fzf, bat
+bash scripts/beautify/beautify-install.sh  # Install eza, fzf, bat, tmuxinator
 
 # Advanced standalone tools
 bash bash-scripts/docker-push-auto.sh
@@ -161,7 +161,8 @@ The `install.sh` script uses external mirror configuration scripts:
 ## Recent Updates
 
 ### 2025-02-08
-- Added `scripts/beautify/` module with eza, fzf (0.67.0), bat support
+- Added `scripts/beautify/` module with eza, fzf (0.67.0), bat, tmuxinator support
+- Added tmuxinator installation with Ruby dependency handling and shell completions
 - Added ssh-agent plugin to ZSH configuration
 - Fixed Powerlevel10k instant prompt compatibility with ssh-agent
 - Unified all scripts to use `select_menu` and `interactive_ask_confirmation` from `common.sh`

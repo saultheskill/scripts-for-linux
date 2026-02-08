@@ -169,6 +169,140 @@ EOF
 }
 
 # =============================================================================
+# tmuxinator 安装函数
+# =============================================================================
+
+# 检查 Ruby 是否已安装
+check_ruby_installed() {
+    if command -v ruby >/dev/null 2>&1; then
+        log_info "Ruby 已安装: $(ruby --version 2>/dev/null | head -1)"
+        return 0
+    else
+        return 1
+    fi
+}
+
+# 安装 Ruby
+install_ruby() {
+    log_info "安装 Ruby..."
+
+    if apt install -y ruby-full 2>/dev/null; then
+        log_info "Ruby 安装成功"
+        return 0
+    else
+        log_error "Ruby 安装失败"
+        return 1
+    fi
+}
+
+# 检查 tmuxinator 是否已安装
+check_tmuxinator_installed() {
+    if command -v tmuxinator >/dev/null 2>&1; then
+        log_info "tmuxinator 已安装: $(tmuxinator version 2>/dev/null)"
+        return 0
+    else
+        return 1
+    fi
+}
+
+# 安装 tmuxinator
+install_tmuxinator() {
+    log_info "开始安装 tmuxinator..."
+
+    # 检查是否已安装
+    if check_tmuxinator_installed; then
+        if interactive_ask_confirmation "tmuxinator 已安装，是否重新安装/配置？" "false"; then
+            log_info "继续重新安装..."
+        else
+            log_info "跳过安装"
+            show_tmuxinator_usage
+            return 0
+        fi
+    fi
+
+    # 检查并安装 Ruby
+    if ! check_ruby_installed; then
+        log_info "tmuxinator 需要 Ruby 环境"
+        if ! install_ruby; then
+            log_error "Ruby 安装失败，无法继续安装 tmuxinator"
+            return 1
+        fi
+    fi
+
+    # 安装 tmuxinator gem
+    log_info "安装 tmuxinator gem..."
+    if gem install tmuxinator 2>/dev/null; then
+        log_info "tmuxinator 安装成功"
+    else
+        log_error "tmuxinator gem 安装失败"
+        return 1
+    fi
+
+    # 确保 gem 二进制文件目录在 PATH 中
+    local gem_bin_path="$(ruby -e 'puts Gem.bindir' 2>/dev/null || echo "$HOME/.local/share/gem/ruby/3.0.0/bin")"
+    if [ -d "$gem_bin_path" ] && [[ ":$PATH:" != *":$gem_bin_path:"* ]]; then
+        log_info "添加 gem 二进制目录到 PATH..."
+        echo "export PATH=\"$gem_bin_path:\$PATH\"" >> "$HOME/.zshrc"
+    fi
+
+    # 安装 shell 补全
+    install_tmuxinator_completions
+
+    # 显示使用说明
+    show_tmuxinator_usage
+
+    return 0
+}
+
+# 安装 tmuxinator shell 补全
+install_tmuxinator_completions() {
+    log_info "配置 tmuxinator 命令补全..."
+
+    local zsh_completion_dir="/usr/local/share/zsh/site-functions"
+    mkdir -p "$zsh_completion_dir"
+
+    # 下载 zsh 补全文件
+    if wget -q "https://raw.githubusercontent.com/tmuxinator/tmuxinator/master/completion/tmuxinator.zsh" -O "$zsh_completion_dir/_tmuxinator" 2>/dev/null; then
+        log_info "ZSH 补全配置完成"
+    else
+        log_warn "ZSH 补全下载失败，不影响正常使用"
+    fi
+}
+
+# 显示 tmuxinator 使用说明
+show_tmuxinator_usage() {
+    echo
+    echo -e "${CYAN}tmuxinator 使用说明：${RESET}"
+    echo
+    echo -e "${GREEN}常用命令：${RESET}"
+    echo -e "  ${YELLOW}tmuxinator new [project]${RESET}     - 创建新项目配置"
+    echo -e "  ${YELLOW}tmuxinator start [project]${RESET}   - 启动项目会话"
+    echo -e "  ${YELLOW}tmuxinator stop [project]${RESET}    - 停止项目会话"
+    echo -e "  ${YELLOW}tmuxinator list${RESET}              - 列出所有项目"
+    echo -e "  ${YELLOW}tmuxinator copy [old] [new]${RESET}  - 复制项目配置"
+    echo -e "  ${YELLOW}tmuxinator delete [project]${RESET}  - 删除项目配置"
+    echo -e "  ${YELLOW}mux [project]${RESET}                - 快捷命令（tmuxinator 别名）"
+    echo
+    echo -e "${GREEN}示例配置 (~/.config/tmuxinator/sample.yml)：${RESET}"
+    cat << 'EOF'
+name: sample
+root: ~/projects/sample
+
+windows:
+  - editor:
+      layout: main-vertical
+      panes:
+        - vim
+        - guard
+  - server: bundle exec rails s
+  - logs: tail -f log/development.log
+EOF
+    echo
+    echo -e "${YELLOW}提示：重新登录或运行 'source ~/.zshrc' 使配置生效${RESET}"
+    echo -e "${YELLOW}更多文档：https://github.com/tmuxinator/tmuxinator${RESET}"
+}
+
+# =============================================================================
 # bat 安装函数
 # =============================================================================
 
@@ -454,7 +588,7 @@ show_header() {
     echo -e "${BLUE}================================================================${RESET}"
     echo
     echo -e "${CYAN}本脚本将安装各种命令行美化工具${RESET}"
-    echo -e "${CYAN}包括 eza（现代化的 ls）和 fzf（模糊查找器）${RESET}"
+    echo -e "${CYAN}包括 eza（现代化的 ls）、fzf（模糊查找器）、tmuxinator（会话管理）${RESET}"
     echo
 }
 
@@ -489,10 +623,11 @@ main() {
 
     # 定义菜单选项数组
     local menu_options=(
-        "eza    - 现代化的 ls 替代品（彩色列表、图标、树形显示）"
-        "fzf    - 模糊查找器（快速文件查找、历史搜索、文件预览）"
-        "bat    - 语法高亮文件查看器（配合 fzf 预览使用）"
-        "全部   - 安装以上所有工具"
+        "eza        - 现代化的 ls 替代品（彩色列表、图标、树形显示）"
+        "fzf        - 模糊查找器（快速文件查找、历史搜索、文件预览）"
+        "tmuxinator - 项目会话管理器（YAML配置工作流）"
+        "bat        - 语法高亮文件查看器（配合 fzf 预览使用）"
+        "全部       - 安装以上所有工具"
         "退出"
     )
 
@@ -518,20 +653,27 @@ main() {
             fi
             ;;
         2)
+            if interactive_ask_confirmation "是否安装 tmuxinator？" "true"; then
+                install_tmuxinator
+            fi
+            ;;
+        3)
             if interactive_ask_confirmation "是否安装 bat？" "true"; then
                 install_bat
             fi
             ;;
-        3)
+        4)
             if interactive_ask_confirmation "是否安装所有美化工具？" "true"; then
                 install_eza
                 echo
                 install_bat
                 echo
                 install_fzf
+                echo
+                install_tmuxinator
             fi
             ;;
-        4)
+        5)
             log_info "退出安装"
             exit 0
             ;;
