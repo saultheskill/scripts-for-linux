@@ -107,56 +107,52 @@ install_package_with_progress() {
     # 使用 apt install 并显示进度（优化触发器处理）
     # 使用状态变量避免重复输出
     local last_status=""
-    if timeout 300 sudo apt install -y --no-install-recommends "$package_name" 2>"$error_log" | while IFS= read -r line; do
-        # 过滤并显示关键信息，避免重复显示相同状态
-        if [[ "$line" =~ "Reading package lists" ]]; then
-            if [[ "$last_status" != "reading" ]]; then
-                echo -e "  ${CYAN}📋${RESET} 读取软件包列表..."
-                last_status="reading"
-            fi
-        elif [[ "$line" =~ "Building dependency tree" ]]; then
-            if [[ "$last_status" != "building" ]]; then
-                echo -e "  ${CYAN}🔗${RESET} 分析依赖关系..."
-                last_status="building"
-            fi
-        elif [[ "$line" =~ "The following NEW packages will be installed" ]]; then
-            if [[ "$last_status" != "preparing" ]]; then
-                echo -e "  ${CYAN}📦${RESET} 准备安装新软件包..."
-                last_status="preparing"
-            fi
-        elif [[ "$line" =~ "Need to get" ]]; then
-            local size=$(echo "$line" | grep -o '[0-9,.]* [kMG]B' | head -1)
-            if [[ -n "$size" && "$last_status" != "download_size" ]]; then
-                echo -e "  ${CYAN}↓${RESET} 需要下载: $size"
-                last_status="download_size"
-            fi
-        elif [[ "$line" =~ "Get:" ]]; then
-            if [[ "$last_status" != "downloading" ]]; then
-                echo -e "  ${CYAN}↓${RESET} 正在下载软件包..."
-                last_status="downloading"
-            fi
-        elif [[ "$line" =~ "Unpacking" ]]; then
-            if [[ "$last_status" != "unpacking" ]]; then
-                echo -e "  ${CYAN}📂${RESET} 正在解包..."
-                last_status="unpacking"
-            fi
-        elif [[ "$line" =~ "Setting up" ]]; then
-            if [[ "$last_status" != "setting" ]]; then
-                echo -e "  ${CYAN}⚙${RESET} 正在配置软件包..."
-                last_status="setting"
-            fi
-        elif [[ "$line" =~ "Processing triggers" ]]; then
-            if [[ "$last_status" != "triggers" ]]; then
-                echo -e "  ${CYAN}🔄${RESET} 正在处理触发器..."
-                last_status="triggers"
-            fi
+    local apt_exit_code=0
+
+    # 在后台运行 apt，并使用超时机制
+    sudo apt install -y --no-install-recommends "$package_name" 2>"$error_log" &
+    local apt_pid=$!
+
+    # 监控 apt 输出
+    tail -f /var/log/apt/term.log 2>/dev/null &
+    local tail_pid=$!
+
+    # 等待 apt 完成（最多300秒）
+    local wait_count=0
+    local max_wait=300
+    while kill -0 $apt_pid 2>/dev/null; do
+        if [ $wait_count -ge $max_wait ]; then
+            echo -e "  ${RED}❌${RESET} 安装超时，终止进程..."
+            kill -9 $apt_pid 2>/dev/null
+            kill -9 $tail_pid 2>/dev/null
+            apt_exit_code=1
+            break
         fi
-    done; then
+        # 显示进度点
+        if [ $((wait_count % 10)) -eq 0 ]; then
+            echo -n "."
+        fi
+        sleep 1
+        wait_count=$((wait_count + 1))
+    done
+
+    # 清理 tail 进程
+    kill -9 $tail_pid 2>/dev/null
+
+    # 获取 apt 实际退出码
+    if [ $apt_exit_code -eq 0 ]; then
+        wait $apt_pid 2>/dev/null
+        apt_exit_code=$?
+    fi
+
+    # 根据 apt 退出码判断结果
+    if [ $apt_exit_code -eq 0 ]; then
         echo -e "  ${GREEN}✅${RESET} $package_desc 安装成功"
         rm -f "$error_log" "$install_log"
         return 0
     else
         local exit_code=$?
+        echo ""
         echo -e "  ${RED}❌${RESET} $package_desc 安装失败"
 
         # 分析错误原因
