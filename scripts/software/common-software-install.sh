@@ -222,6 +222,46 @@ EOF
     log_info "APT 优化配置已应用"
 }
 
+# 配置 vim 为默认编辑器
+configure_vim_as_editor() {
+    log_info "配置默认编辑器..."
+
+    local editor_export="export EDITOR='vim'"
+    local shell_files=("$HOME/.zshrc" "$HOME/.bashrc")
+    local configured_count=0
+
+    for shell_file in "${shell_files[@]}"; do
+        if [ -f "$shell_file" ]; then
+            # 检查是否已配置 EDITOR
+            if grep -q "^export EDITOR=" "$shell_file" 2>/dev/null; then
+                # 检查是否已经是 vim
+                if grep -q "^export EDITOR='vim'" "$shell_file" 2>/dev/null || \
+                   grep -q '^export EDITOR="vim"' "$shell_file" 2>/dev/null; then
+                    log_info "EDITOR 已配置为 vim ($shell_file)"
+                else
+                    # 替换现有的 EDITOR 配置
+                    sed -i "s/^export EDITOR=.*/$editor_export/" "$shell_file"
+                    log_info "已更新 EDITOR 为 vim ($shell_file)"
+                fi
+            else
+                # 添加新的 EDITOR 配置
+                echo "" >> "$shell_file"
+                echo "# 设置默认编辑器" >> "$shell_file"
+                echo "$editor_export" >> "$shell_file"
+                log_info "已添加 EDITOR 配置到 $shell_file"
+            fi
+            configured_count=$((configured_count + 1))
+        fi
+    done
+
+    if [ $configured_count -gt 0 ]; then
+        echo -e "  ${GREEN}✅${RESET} 默认编辑器已设置为 vim"
+        echo -e "  ${CYAN}提示:${RESET} 重新登录或运行 'source ~/.zshrc' 使配置生效"
+    else
+        log_warn "未找到可用的 shell 配置文件"
+    fi
+}
+
 # 批量处理触发器
 process_triggers_batch() {
     log_info "批量处理待处理的触发器..."
@@ -381,6 +421,11 @@ install_common_software() {
         echo -e "  • 运行 'sudo apt update' 更新软件源"
         echo -e "  • 稍后重新运行安装脚本"
         echo
+    fi
+
+    # 配置 vim 为默认编辑器
+    if [ $success_count -gt 0 ]; then
+        configure_vim_as_editor
     fi
 
     # 清理 APT 配置
