@@ -27,8 +27,6 @@ else
     exit 1
 fi
 
-
-
 # =============================================================================
 # 配置变量
 # =============================================================================
@@ -181,8 +179,6 @@ check_system_requirements() {
     log_info "系统要求检查通过"
 }
 
-
-
 # 创建安装选项菜单数组
 create_install_menu_options() {
     INSTALL_MENU_OPTIONS=(
@@ -245,8 +241,8 @@ execute_local_script() {
     else
         log_error "$script_name 执行失败 (退出码: $exit_code)"
         log_error "请检查上述错误信息以了解失败原因"
-        # 不要传播错误，让用户选择是否继续
-        return 0
+        # 返回错误码，让调用者决定是否继续
+        return $exit_code
     fi
 }
 
@@ -264,8 +260,6 @@ install_common_software() {
     execute_local_script "software/common-software-install.sh" "常用软件安装"
 }
 
-
-
 # 安装系统配置
 install_system_config() {
     execute_local_script "system/time-sync.sh" "时间同步配置"
@@ -281,7 +275,10 @@ install_zsh_environment() {
     case "$arch" in
         aarch64|armv7l)
             log_info "检测到ARM架构，使用ARM专用脚本"
-            execute_local_script "shell/zsh-arm.sh" "ARM版ZSH环境"
+            if ! execute_local_script "shell/zsh-arm.sh" "ARM版ZSH环境"; then
+                log_error "ARM版ZSH环境安装失败"
+                install_success=false
+            fi
             ;;
         *)
             log_info "检测到x86_64架构，使用模块化安装脚本"
@@ -544,7 +541,6 @@ main_install() {
         fi
     done
 }
-
 
 # 显示完成信息
 show_completion() {
