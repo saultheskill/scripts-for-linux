@@ -1,0 +1,29 @@
+# 基础开发环境 - 适合一般开发工作
+# 使用方法: tmuxinator start basic
+
+name: basic
+root: ~/
+
+# 启动前检查
+on_project_start: |
+  echo "启动基础开发环境..."
+
+# 窗口布局
+windows:
+  - editor:
+      layout: main-vertical
+      panes:
+        - vim
+        - # 空白，用于执行命令
+
+  - terminal:
+      layout: even-horizontal
+      panes:
+        - # 主终端
+        - htop
+
+  - logs:
+      layout: even-vertical
+      panes:
+        - tail -f /var/log/syslog 2>/dev/null || journalctl -f
+        - # 空白面板

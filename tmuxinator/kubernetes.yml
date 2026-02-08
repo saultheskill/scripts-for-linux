@@ -1,0 +1,46 @@
+# Kubernetes 开发环境 - 适合 K8s 运维开发
+# 使用方法: tmuxinator start kubernetes
+
+name: kubernetes
+root: ~/
+
+# 启动前检查
+on_project_start: |
+  if ! command -v kubectl &> /dev/null; then
+    echo "警告: kubectl 未安装"
+  else
+    echo "当前上下文: $(kubectl config current-context 2>/dev/null || echo '未设置')"
+  fi
+
+# 启动命令
+on_project_first_start: |
+  echo "Kubernetes 开发环境"
+  echo "常用命令:"
+  echo "  kubectl get pods -A     - 查看所有 Pod"
+  echo "  kubectl get nodes       - 查看节点状态"
+  echo "  kubectl top nodes       - 查看资源使用"
+
+windows:
+  - pods:
+      layout: even-vertical
+      panes:
+        - watch -n 3 'kubectl get pods --all-namespaces 2>/dev/null || echo "无法连接到集群"'
+        - kubectl get events --all-namespaces -w 2>/dev/null || echo "事件监控未启动"
+
+  - nodes:
+      layout: even-horizontal
+      panes:
+        - watch -n 5 'kubectl get nodes -o wide 2>/dev/null || echo "集群未连接"'
+        - watch -n 5 'kubectl top nodes 2>/dev/null || echo "metrics-server 未安装"'
+
+  - deploy:
+      layout: main-vertical
+      panes:
+        - # 部署操作面板
+        - watch -n 3 'kubectl get deployments --all-namespaces 2>/dev/null || echo "无权限或集群未连接"'
+
+  - logs:
+      layout: even-vertical
+      panes:
+        - stern --all-namespaces '.*' 2>/dev/null || echo "stern 未安装，使用: kubectl logs -f"
+        - # 空白面板用于手动日志查看

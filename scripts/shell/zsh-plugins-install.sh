@@ -526,6 +526,107 @@ EOF
             log_info "Powerline配置已添加到 $tmux_conf_local"
         fi
     fi
+
+    # 配置 tmux-resurrect 和 tmux-continuum 插件
+    configure_tmux_resurrect_plugins
+}
+
+# 配置 tmux-resurrect 和 tmux-continuum 插件
+configure_tmux_resurrect_plugins() {
+    log_info "配置 tmux-resurrect 和 tmux-continuum 插件..."
+
+    local tmux_conf_local="$HOME/.tmux.conf.local"
+
+    if [ ! -f "$tmux_conf_local" ]; then
+        log_warn "未找到 $tmux_conf_local，跳过插件配置"
+        return 1
+    fi
+
+    # 检查是否已配置
+    if grep -q "tmux-plugins/tmux-resurrect" "$tmux_conf_local"; then
+        log_info "tmux-resurrect 插件已配置，跳过"
+        return 0
+    fi
+
+    log_info "添加 tmux-resurrect 和 tmux-continuum 插件配置..."
+
+    cat >> "$tmux_conf_local" << 'EOF'
+
+# ==============================================
+# Tmux Resurrect & Continuum 插件配置
+# ==============================================
+# 安装说明:
+#   1. 克隆插件到 ~/.tmux/plugins/:
+#      git clone https://github.com/tmux-plugins/tmux-resurrect ~/.tmux/plugins/tmux-resurrect
+#      git clone https://github.com/tmux-plugins/tmux-continuum ~/.tmux/plugins/tmux-continuum
+#
+#   2. 按 <prefix> + I 安装插件 (如果已安装 TPM)
+#
+# 功能说明:
+#   - tmux-resurrect: 保存和恢复 tmux 会话
+#     * prefix + Ctrl-s : 手动保存会话
+#     * prefix + Ctrl-r : 恢复会话
+#
+#   - tmux-continuum: 自动保存和恢复
+#     * 每 15 分钟自动保存
+#     * 启动 tmux 时自动恢复上次会话
+
+# 插件列表 (需要 TPM - Tmux Plugin Manager)
+set -g @plugin 'tmux-plugins/tmux-resurrect'
+set -g @plugin 'tmux-plugins/tmux-continuum'
+
+# 启用自动恢复 (tmux 启动时自动恢复上次会话)
+set -g @continuum-restore 'on'
+
+# 自动保存间隔（分钟，默认 15）
+set -g @continuum-save-interval '15'
+
+# 保存的额外程序（默认已保存: vi vim nvim emacs man less more tail top htop irssi weechat mutt）
+set -g @resurrect-processes 'ssh docker docker-compose npm node python python3'
+
+# 恢复窗格内容（实验性功能，需要 tmux 2.0+）
+# set -g @resurrect-capture-pane-contents 'on'
+
+# 恢复 vim/neovim 会话（需要 vim-obsession 插件）
+# set -g @resurrect-strategy-vim 'session'
+# set -g @resurrect-strategy-nvim 'session'
+
+# 保存目录（默认 ~/.tmux/resurrect/）
+# set -g @resurrect-dir '~/.tmux/resurrect'
+EOF
+
+    log_info "tmux-resurrect 和 tmux-continuum 配置已添加"
+    log_info "请手动克隆插件或安装 TPM 后按 <prefix> + I 安装"
+
+    # 显示插件快捷键
+    show_tmux_resurrect_bindings
+
+    return 0
+}
+
+# 显示 tmux-resurrect 快捷键
+show_tmux_resurrect_bindings() {
+    echo
+    echo -e "${CYAN}Tmux Resurrect & Continuum 快捷键:${RESET}"
+    echo
+    echo -e "${GREEN}手动操作:${RESET}"
+    echo -e "  ${YELLOW}<prefix> Ctrl-s${RESET}    - 保存当前 tmux 会话"
+    echo -e "  ${YELLOW}<prefix> Ctrl-r${RESET}    - 恢复上次保存的会话"
+    echo
+    echo -e "${GREEN}自动功能:${RESET}"
+    echo -e "  ${YELLOW}自动保存${RESET}        - 每 15 分钟自动保存一次"
+    echo -e "  ${YELLOW}自动恢复${RESET}        - 启动 tmux 时自动恢复上次会话"
+    echo
+    echo -e "${GREEN}保存内容:${RESET}"
+    echo -e "  • 所有会话、窗口、窗格及其布局"
+    echo -e "  • 当前工作目录"
+    echo -e "  • 运行的程序 (vim, htop, docker, ssh 等)"
+    echo -e "  • 活动窗格和窗口状态"
+    echo
+    echo -e "${YELLOW}注意:${RESET} 需要安装插件后才能使用上述功能"
+    echo -e "      运行: ${CYAN}git clone https://github.com/tmux-plugins/tmux-resurrect ~/.tmux/plugins/tmux-resurrect${RESET}"
+    echo -e "      运行: ${CYAN}git clone https://github.com/tmux-plugins/tmux-continuum ~/.tmux/plugins/tmux-continuum${RESET}"
+    echo
 }
 
 # 显示tmux快捷键帮助
@@ -607,6 +708,12 @@ show_tmux_key_bindings() {
     echo -e "  - 按 ${GREEN}<prefix> e${RESET} 编辑配置，${GREEN}<prefix> r${RESET} 重新加载"
     echo -e "  - 鼠标模式开启后可用鼠标点击切换窗格、调整大小"
     echo -e "  - 推荐安装 Powerline 或 Nerd Fonts 获得最佳显示效果"
+    echo
+    echo -e "${CYAN}会话保存/恢复 (需安装 tmux-resurrect/continuum 插件):${RESET}"
+    echo -e "  ${GREEN}<prefix> Ctrl-s${RESET}         - 保存当前会话状态"
+    echo -e "  ${GREEN}<prefix> Ctrl-r${RESET}         - 恢复上次保存的会话"
+    echo -e "  ${YELLOW}自动保存${RESET}               - 每 15 分钟自动保存"
+    echo -e "  ${YELLOW}自动恢复${RESET}               - 启动 tmux 时自动恢复"
     echo
 }
 

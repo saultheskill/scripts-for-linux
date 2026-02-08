@@ -1,0 +1,47 @@
+# Web 开发环境 - 适合前端/全栈开发
+# 使用方法: tmuxinator start web-dev
+
+name: web-dev
+root: ~/projects/web
+
+# 启动前准备
+on_project_start: |
+  if [ ! -d ~/projects/web ]; then
+    mkdir -p ~/projects/web
+    echo "已创建项目目录: ~/projects/web"
+  fi
+  echo "Web 开发环境准备就绪"
+
+# 启动命令
+on_project_first_start: |
+  echo "Web 开发环境"
+  echo ""
+  echo "常用命令:"
+  echo "  npm start       - 启动开发服务器"
+  echo "  npm run build   - 构建项目"
+  echo "  npm test        - 运行测试"
+  echo "  git status      - 查看仓库状态"
+
+windows:
+  - editor:
+      layout: main-vertical
+      panes:
+    
+
+  - server:
+      layout: even-horizontal
+      panes:
+        - # npm run dev / npm start
+        - # 构建/测试面板
+
+  - git:
+      layout: even-vertical
+      panes:
+        - watch -n 5 'git status -sb 2>/dev/null || echo "非 git 仓库"'
+        - git log --oneline --graph -20 --all 2>/dev/null || echo "无提交历史"
+
+  - terminal:
+      layout: even-horizontal
+      panes:
+        - # 终端 1
+        - # 终端 2

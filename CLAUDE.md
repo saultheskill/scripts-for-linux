@@ -144,6 +144,8 @@ The `install.sh` script uses external mirror configuration scripts:
 - Docker push tool stores config in `~/.docker-push-config`
 - Themes are in `themes/powerlevel10k/` (dracula, rainbow, emoji variants)
 - Eza theme config: `~/.config/eza/theme.yml`
+- Tmuxinator project configs: `tmuxinator/*.yml`
+- Tmux plugins config: `~/.tmux.conf.local` (includes tmux-resurrect and tmux-continuum)
 
 ### Environment Variables
 
@@ -168,3 +170,5 @@ The `install.sh` script uses external mirror configuration scripts:
 - Unified all scripts to use `select_menu` and `interactive_ask_confirmation` from `common.sh`
 - Added `--tmux-help` flag to `zsh-plugins-install.sh` for displaying tmux key bindings
 - Optimized `install_tmux_config()` to use official Oh My Tmux installation script
+- Added tmux-resurrect and tmux-continuum plugins configuration for session save/restore
+- Created `tmuxinator/` directory with 5 common project templates (basic, docker-dev, kubernetes, monitoring, web-dev)

@@ -1,0 +1,33 @@
+# 系统监控环境 - 适合服务器监控和排查
+# 使用方法: tmuxinator start monitoring
+
+name: monitoring
+root: ~/
+
+on_project_start: |
+  echo "启动系统监控环境..."
+
+windows:
+  - system:
+      layout: even-vertical
+      panes:
+        - htop
+        - watch -n 2 'df -h | grep -E "(Filesystem|/dev/)"'
+
+  - network:
+      layout: even-horizontal
+      panes:
+        - iftop -i $(ip route | grep default | awk '{print $5}' | head -1) 2>/dev/null || echo "iftop 未安装"
+        - watch -n 3 'ss -tuln | head -20'
+
+  - logs:
+      layout: even-vertical
+      panes:
+        - sudo tail -f /var/log/syslog 2>/dev/null || sudo journalctl -f
+        - sudo dmesg -w 2>/dev/null || echo "无法查看内核日志"
+
+  - processes:
+      layout: main-horizontal
+      panes:
+        - watch -n 3 'ps aux --sort=-%cpu | head -20'
+        - iostat -x 2 2>/dev/null || echo "sysstat 未安装"
