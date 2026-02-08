@@ -235,7 +235,7 @@ cleanup_apt_config() {
 
 # 安装常用软件（改进版，带详细进度显示和触发器优化）
 install_common_software() {
-    log_debug "进入 install_common_software() 函数"
+    echo "[DEBUG] 进入 install_common_software() 函数" >&2
     log_info "开始安装常用软件..."
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
 
@@ -486,14 +486,15 @@ is_sourced() {
 }
 
 # 脚本入口点
-log_debug "脚本入口判断: BASH_SOURCE[0]=${BASH_SOURCE[0]}, \$0=${0}"
-log_debug "是否相等: $([[ "${BASH_SOURCE[0]}" == "${0}" ]] && echo '是' || echo '否')"
+echo "[DEBUG] 脚本入口判断: BASH_SOURCE[0]=${BASH_SOURCE[0]}, \$0=${0}" >&2
+echo "[DEBUG] INSTALLER_CALLED=${INSTALLER_CALLED:-未设置}" >&2
 
-if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
-    log_debug "进入 main() 分支"
-    main "$@"
-else
-    log_debug "进入直接安装分支（被调用）"
+if [[ -n "${INSTALLER_CALLED:-}" ]]; then
+    echo "[DEBUG] 进入直接安装分支（被 install.sh 调用）" >&2
     # 被其他脚本调用时，直接执行安装（跳过确认）
     install_common_software
+    echo "[DEBUG] install_common_software 执行完毕, 退出码: $?" >&2
+else
+    echo "[DEBUG] 进入 main() 分支（独立运行）" >&2
+    main "$@"
 fi
