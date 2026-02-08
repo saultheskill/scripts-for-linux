@@ -188,6 +188,7 @@ create_install_menu_options() {
         "开发工具 - Neovim、LazyVim、Git工具"
         "安全配置 - SSH配置、密钥管理"
         "Docker环境 - Docker、Docker Compose、管理工具"
+        "美化工具 - eza、主题配置"
         "软件源管理 - 系统软件源、Docker源、镜像加速器"
         "全部安装 - 逐个确认安装所有组件（推荐）"
         "自定义安装 - 与全部安装相同，逐个选择组件"
@@ -339,6 +340,11 @@ install_docker_environment() {
     execute_local_script "containers/docker-install.sh" "Docker环境"
 }
 
+# 安装美化工具
+install_beautify_tools() {
+    execute_local_script "beautify/eza-install.sh" "eza美化工具"
+}
+
 # 创建软件源管理菜单数组
 create_mirrors_menu_options() {
     MIRRORS_MENU_OPTIONS=(
@@ -455,6 +461,10 @@ install_all() {
         install_docker_environment
     fi
 
+    if interactive_ask_confirmation "是否安装美化工具？" "false"; then
+        install_beautify_tools
+    fi
+
     if interactive_ask_confirmation "是否进行软件源管理？" "false"; then
         manage_mirrors
     fi
@@ -514,16 +524,19 @@ main_install() {
             5)  # Docker环境
                 install_docker_environment
                 ;;
-            6)  # 软件源管理
+            6)  # 美化工具
+                install_beautify_tools
+                ;;
+            7)  # 软件源管理
                 manage_mirrors
                 ;;
-            7)  # 全部安装
+            8)  # 全部安装
                 install_all
                 ;;
-            8)  # 自定义安装
+            9)  # 自定义安装
                 custom_install
                 ;;
-            9)  # 退出
+            10)  # 退出
                 log_info "退出安装程序"
                 exit 0
                 ;;
