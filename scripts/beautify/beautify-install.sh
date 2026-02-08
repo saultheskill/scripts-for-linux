@@ -169,6 +169,43 @@ EOF
 }
 
 # =============================================================================
+# bat 安装函数
+# =============================================================================
+
+# 检查 bat 是否已安装
+check_bat_installed() {
+    if command -v bat >/dev/null 2>&1 || command -v batcat >/dev/null 2>&1; then
+        log_info "bat 已安装"
+        return 0
+    else
+        return 1
+    fi
+}
+
+# 安装 bat
+install_bat() {
+    log_info "安装 bat..."
+
+    # 使用 apt 安装
+    if apt install -y bat 2>/dev/null; then
+        log_info "bat 安装成功"
+
+        # 创建 bat -> batcat 符号链接（Ubuntu/Debian 上 bat 命令名为 batcat）
+        if command -v batcat >/dev/null 2>&1 && ! command -v bat >/dev/null 2>&1; then
+            log_info "创建 bat -> batcat 符号链接..."
+            mkdir -p ~/.local/bin
+            ln -sf /usr/bin/batcat ~/.local/bin/bat
+            log_info "符号链接创建完成: ~/.local/bin/bat"
+        fi
+
+        return 0
+    else
+        log_error "bat 安装失败"
+        return 1
+    fi
+}
+
+# =============================================================================
 # fzf 安装函数 (使用最新二进制版本 0.67.0)
 # =============================================================================
 
@@ -273,10 +310,43 @@ export FZF_DEFAULT_OPTS='--style full --height 40% --layout=reverse --border --i
 # fzf ZSH 集成 (需要 fzf 0.48.0+)
 source <(fzf --zsh)
 
+# fzf 预览配置 - 使用 bat 进行语法高亮预览
+# 检测 bat 或 batcat 命令
+if command -v bat >/dev/null 2>&1; then
+    _fzf_bat_cmd='bat'
+elif command -v batcat >/dev/null 2>&1; then
+    _fzf_bat_cmd='batcat'
+fi
+
+# CTRL-T: 文件选择（带预览）
+export FZF_CTRL_T_OPTS="
+  --walker-skip .git,node_modules,target
+  --preview '\${_fzf_bat_cmd} --color=always --style=numbers --line-range=:500 {} 2>/dev/null || cat {} 2>/dev/null || echo \"无法预览\"'
+  --preview-window 'right:50%:wrap'
+  --bind 'ctrl-/:change-preview-window(down|hidden|)'
+  --bind 'ctrl-o:execute(\${_fzf_bat_cmd} {} 2>/dev/null || less {} 2>/dev/null || cat {})'
+  --header 'CTRL-T:选择文件 | CTRL-O:打开文件 | CTRL-/:切换预览'"
+
+# CTRL-R: 历史命令
+export FZF_CTRL_R_OPTS="
+  --bind 'ctrl-y:execute-silent(echo -n {2..} | xclip -selection clipboard 2>/dev/null || echo -n {2..} | pbcopy 2>/dev/null || true)+abort'
+  --color header:italic
+  --header 'CTRL-R:搜索历史 | CTRL-Y:复制命令'"
+
+# ALT-C: 目录跳转（带 tree 预览）
+export FZF_ALT_C_OPTS="
+  --walker-skip .git,node_modules,target
+  --preview 'tree -C {} 2>/dev/null | head -200 || ls -la {} 2>/dev/null | head -50'
+  --preview-window 'right:50%'
+  --header 'ALT-C:跳转目录'"
+
+# 清理临时变量
+unset _fzf_bat_cmd
+
 # fzf 快捷键说明：
-# CTRL-T - 粘贴选中的文件/目录到命令行
+# CTRL-T - 粘贴选中的文件/目录到命令行（带文件预览）
 # CTRL-R - 搜索命令历史
-# ALT-C  - cd 到选中的目录
+# ALT-C  - cd 到选中的目录（带目录预览）
 # **<TAB> - 模糊补全（文件、目录、进程等）
 EOF
 
@@ -396,8 +466,9 @@ show_menu() {
     echo -e "${BLUE}================================================================${RESET}"
     echo
     echo -e "  ${CYAN}1)${RESET} eza    - 现代化的 ls 替代品（彩色列表、图标、树形显示）"
-    echo -e "  ${CYAN}2)${RESET} fzf    - 模糊查找器（快速文件查找、历史搜索）"
-    echo -e "  ${CYAN}3)${RESET} 全部   - 安装以上所有工具"
+    echo -e "  ${CYAN}2)${RESET} fzf    - 模糊查找器（快速文件查找、历史搜索、文件预览）"
+    echo -e "  ${CYAN}3)${RESET} bat    - 语法高亮文件查看器（配合 fzf 预览使用）"
+    echo -e "  ${CYAN}4)${RESET} 全部   - 安装以上所有工具"
     echo -e "  ${CYAN}0)${RESET} 退出"
     echo
 }
@@ -436,7 +507,7 @@ main() {
 
     # 读取用户选择
     local choice
-    read -p "请输入选项 [0-3]: " choice
+    read -p "请输入选项 [0-4]: " choice
 
     case "$choice" in
         1)
@@ -446,12 +517,26 @@ main() {
             ;;
         2)
             if interactive_ask_confirmation "是否安装 fzf？" "true"; then
+                # 建议先安装 bat 以获得更好的预览体验
+                if ! check_bat_installed; then
+                    log_warn "提示：安装 bat 可获得更好的文件预览效果"
+                    if interactive_ask_confirmation "是否同时安装 bat？" "true"; then
+                        install_bat
+                    fi
+                fi
                 install_fzf
             fi
             ;;
         3)
+            if interactive_ask_confirmation "是否安装 bat？" "true"; then
+                install_bat
+            fi
+            ;;
+        4)
             if interactive_ask_confirmation "是否安装所有美化工具？" "true"; then
                 install_eza
+                echo
+                install_bat
                 echo
                 install_fzf
             fi
