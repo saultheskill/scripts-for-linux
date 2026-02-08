@@ -1032,5 +1032,33 @@ is_sourced() {
 
 # 脚本入口点
 if [[ "${BASH_SOURCE[0]:-}" == "${0}" ]] || [[ -z "${BASH_SOURCE[0]:-}" ]]; then
-    main "$@"
+    # 检查参数
+    case "${1:-}" in
+        --tmux-help|-t)
+            # 只显示tmux快捷键帮助
+            show_header
+            show_tmux_key_bindings
+            exit 0
+            ;;
+        --help|-h)
+            # 显示帮助信息
+            show_header
+            echo -e "${CYAN}用法: $0 [选项]${RESET}"
+            echo
+            echo -e "${CYAN}选项:${RESET}"
+            echo -e "  ${GREEN}--help, -h${RESET}       显示此帮助信息"
+            echo -e "  ${GREEN}--tmux-help, -t${RESET}  显示tmux快捷键帮助"
+            echo -e "  ${GREEN}(无参数)${RESET}         运行完整安装流程"
+            echo
+            echo -e "${CYAN}示例:${RESET}"
+            echo -e "  $0                   # 运行安装"
+            echo -e "  $0 --tmux-help       # 显示tmux快捷键"
+            echo
+            exit 0
+            ;;
+        *)
+            # 正常运行
+            main "$@"
+            ;;
+    esac
 fi
