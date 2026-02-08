@@ -52,7 +52,7 @@ readonly ZSH_PLUGINS=(
 )
 
 # 完整插件列表（用于.zshrc配置）
-readonly COMPLETE_PLUGINS="git extract systemadmin zsh-interactive-cd systemd sudo docker ubuntu man command-not-found common-aliases docker-compose zsh-autosuggestions zsh-syntax-highlighting tmux you-should-use"
+readonly COMPLETE_PLUGINS="git extract systemadmin zsh-interactive-cd systemd sudo docker ubuntu man command-not-found common-aliases docker-compose zsh-autosuggestions zsh-syntax-highlighting tmux you-should-use ssh-agent"
 
 # 额外工具配置
 readonly TMUX_CONFIG_REPO="https://github.com/gpakosz/.tmux.git"
@@ -560,6 +560,22 @@ export YSU_MESSAGE_POSITION="after"
 # zsh-autosuggestions 插件配置
 ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE="fg=#666666"
 ZSH_AUTOSUGGEST_STRATEGY=(history completion)
+
+# ssh-agent 插件配置
+# 启用代理转发支持
+#zstyle :omz:plugins:ssh-agent agent-forwarding yes
+
+# 延迟加载（首次使用时加载密钥，推荐与 AddKeysToAgent 配合使用）
+zstyle :omz:plugins:ssh-agent lazy yes
+
+# 静默模式（不显示加载信息）
+zstyle :omz:plugins:ssh-agent quiet yes
+
+# 加载特定身份（默认加载 ~/.ssh/id_rsa 等）
+#zstyle :omz:plugins:ssh-agent identities id_rsa id_github
+
+# 设置密钥有效期（例如 4小时）
+#zstyle :omz:plugins:ssh-agent lifetime 4h
 
 EOF
         log_info "已添加增强配置"
