@@ -114,11 +114,11 @@ configure_zsh_aliases() {
 
 # Eza aliases
 alias ls='eza --color=always --group-directories-first --icons=auto'
-alias ll='eza --color=always --group-directories-first --icons=auto -l'
+alias ll='eza --color=always --group-directories-first --icons=auto -lh --header'
 alias la='eza --color=always --group-directories-first --icons=auto -a'
-alias lla='eza --color=always --group-directories-first --icons=auto -la'
+alias lla='eza --color=always --group-directories-first --icons=auto -lha --header'
 alias lt='eza --color=always --group-directories-first --icons=auto --tree'
-alias llt='eza --color=always --group-directories-first --icons=auto -l --tree'
+alias llt='eza --color=always --group-directories-first --icons=auto -l --tree --header'
 alias l='eza --color=always --group-directories-first --icons=auto'
 EOF
 
