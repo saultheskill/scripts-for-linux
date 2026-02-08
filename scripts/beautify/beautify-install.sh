@@ -169,47 +169,87 @@ EOF
 }
 
 # =============================================================================
-# fzf 安装函数
+# fzf 安装函数 (使用最新二进制版本 0.67.0)
 # =============================================================================
+
+readonly FZF_VERSION="0.67.0"
+readonly FZF_INSTALL_DIR="/usr/local/bin"
 
 # 检查 fzf 是否已安装
 check_fzf_installed() {
     if command -v fzf >/dev/null 2>&1; then
-        log_info "fzf 已安装: $(fzf --version 2>/dev/null | head -1 || echo '版本信息不可用')"
+        local installed_version
+        installed_version=$(fzf --version 2>/dev/null | awk '{print $1}')
+        log_info "fzf 已安装: 版本 $installed_version"
         return 0
     else
         return 1
     fi
 }
 
-# 安装 fzf
-install_fzf_package() {
-    log_info "安装 fzf..."
-
-    # 尝试使用 apt 安装
-    if apt install -y fzf 2>/dev/null; then
-        log_info "fzf 安装成功"
-        return 0
-    fi
-
-    # apt 失败，使用 git 安装
-    log_warn "apt 安装失败，尝试使用 git 安装..."
-    local fzf_dir="$HOME/.fzf"
-
-    if [ -d "$fzf_dir" ]; then
-        log_info "更新 fzf..."
-        cd "$fzf_dir" && git pull
-    else
-        log_info "克隆 fzf 仓库..."
-        git clone --depth 1 https://github.com/junegunn/fzf.git "$fzf_dir"
-    fi
-
-    # 运行安装脚本
-    "$fzf_dir/install" --all
-    return $?
+# 获取系统架构
+get_system_arch() {
+    local arch=$(uname -m)
+    case "$arch" in
+        x86_64)
+            echo "amd64"
+            ;;
+        aarch64|arm64)
+            echo "arm64"
+            ;;
+        *)
+            log_error "不支持的架构: $arch"
+            exit 1
+            ;;
+    esac
 }
 
-# 配置 fzf ZSH 集成
+# 安装 fzf 二进制文件
+install_fzf_binary() {
+    log_info "安装 fzf $FZF_VERSION..."
+
+    local arch=$(get_system_arch)
+    local download_url="https://github.com/junegunn/fzf/releases/download/v${FZF_VERSION}/fzf-${FZF_VERSION}-linux_${arch}.tar.gz"
+    local temp_dir=$(mktemp -d)
+    local temp_file="$temp_dir/fzf.tar.gz"
+
+    log_info "下载 fzf 二进制文件..."
+    log_info "URL: $download_url"
+
+    if ! wget -q --show-progress -O "$temp_file" "$download_url"; then
+        log_error "下载 fzf 失败"
+        rm -rf "$temp_dir"
+        return 1
+    fi
+
+    log_info "解压 fzf..."
+    if ! tar -xzf "$temp_file" -C "$temp_dir"; then
+        log_error "解压 fzf 失败"
+        rm -rf "$temp_dir"
+        return 1
+    fi
+
+    log_info "安装 fzf 到 $FZF_INSTALL_DIR..."
+    if ! mv "$temp_dir/fzf" "$FZF_INSTALL_DIR/fzf"; then
+        log_error "安装 fzf 失败"
+        rm -rf "$temp_dir"
+        return 1
+    fi
+
+    chmod +x "$FZF_INSTALL_DIR/fzf"
+    rm -rf "$temp_dir"
+
+    # 验证安装
+    if command -v fzf >/dev/null 2>&1; then
+        log_info "fzf 安装成功: $(fzf --version)"
+        return 0
+    else
+        log_error "fzf 安装验证失败"
+        return 1
+    fi
+}
+
+# 配置 fzf ZSH 集成 (仅支持新版本 0.48.0+)
 configure_fzf_zsh() {
     log_info "配置 fzf ZSH 集成..."
 
@@ -230,37 +270,8 @@ configure_fzf_zsh() {
 # fzf configuration - 使用 full 预设主题
 export FZF_DEFAULT_OPTS='--style full --height 40% --layout=reverse --border --inline-info'
 
-# fzf ZSH 集成 - 自动检测安装路径
-__fzf_setup() {
-    local fzf_shell_dir=""
-
-    # 检测 fzf shell 脚本路径
-    if [ -d "$HOME/.fzf/shell" ]; then
-        # git 安装路径
-        fzf_shell_dir="$HOME/.fzf/shell"
-    elif [ -f "/usr/share/doc/fzf/examples/completion.zsh" ]; then
-        # apt 安装路径 (Debian/Ubuntu)
-        fzf_shell_dir="/usr/share/doc/fzf/examples"
-    elif [ -f "/usr/share/fzf/completion.zsh" ]; then
-        # 其他系统路径
-        fzf_shell_dir="/usr/share/fzf"
-    fi
-
-    # 加载 fzf 集成
-    if command -v fzf >/dev/null 2>&1; then
-        # 尝试新版本方式 (fzf 0.48.0+)
-        if fzf --zsh >/dev/null 2>&1; then
-            source <(fzf --zsh)
-        # 旧版本方式：直接加载 shell 脚本
-        elif [ -n "$fzf_shell_dir" ] && [ -f "$fzf_shell_dir/completion.zsh" ]; then
-            source "$fzf_shell_dir/completion.zsh"
-            source "$fzf_shell_dir/key-bindings.zsh"
-        fi
-    fi
-
-    unset -f __fzf_setup
-}
-__fzf_setup
+# fzf ZSH 集成 (需要 fzf 0.48.0+)
+source <(fzf --zsh)
 
 # fzf 快捷键说明：
 # CTRL-T - 粘贴选中的文件/目录到命令行
@@ -275,28 +286,34 @@ EOF
 
 # 安装 fzf
 install_fzf() {
-    log_info "开始安装 fzf..."
+    log_info "开始安装 fzf $FZF_VERSION..."
 
     if check_fzf_installed; then
-        if interactive_ask_confirmation "fzf 已安装，是否重新配置？" "false"; then
+        if interactive_ask_confirmation "fzf 已安装，是否重新安装/配置？" "false"; then
+            log_info "重新安装 fzf..."
+        else
+            log_info "跳过安装"
             configure_fzf_zsh
+            return 0
         fi
-        return 0
     fi
 
-    if ! install_fzf_package; then
+    if ! install_fzf_binary; then
         log_error "fzf 安装失败"
         return 1
     fi
 
     configure_fzf_zsh
 
-    log_info "fzf 安装完成！"
+    log_info "fzf $FZF_VERSION 安装完成！"
     echo
     echo -e "${CYAN}快捷键：${RESET}"
-    echo -e "  ${GREEN}CTRL-T${RESET} - 查找文件"
-    echo -e "  ${GREEN}CTRL-R${RESET} - 搜索历史"
+    echo -e "  ${GREEN}CTRL-T${RESET} - 查找文件并粘贴到命令行"
+    echo -e "  ${GREEN}CTRL-R${RESET} - 搜索命令历史"
     echo -e "  ${GREEN}ALT-C${RESET}  - 跳转目录"
+    echo -e "  ${GREEN}**${RESET}<${GREEN}TAB>${RESET} - 模糊补全"
+    echo
+    echo -e "${YELLOW}提示：重新登录或运行 'source ~/.zshrc' 使配置生效${RESET}"
     return 0
 }
 
