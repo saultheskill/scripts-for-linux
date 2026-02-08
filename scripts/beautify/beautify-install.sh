@@ -230,10 +230,43 @@ configure_fzf_zsh() {
 # fzf configuration
 export FZF_DEFAULT_OPTS='--height 40% --layout=reverse --border --inline-info'
 
-# fzf ZSH 集成
-if command -v fzf >/dev/null 2>&1; then
-    source <(fzf --zsh 2>/dev/null || true)
-fi
+# fzf ZSH 集成 - 自动检测安装路径
+__fzf_setup() {
+    local fzf_shell_dir=""
+
+    # 检测 fzf shell 脚本路径
+    if [ -d "$HOME/.fzf/shell" ]; then
+        # git 安装路径
+        fzf_shell_dir="$HOME/.fzf/shell"
+    elif [ -f "/usr/share/doc/fzf/examples/completion.zsh" ]; then
+        # apt 安装路径 (Debian/Ubuntu)
+        fzf_shell_dir="/usr/share/doc/fzf/examples"
+    elif [ -f "/usr/share/fzf/completion.zsh" ]; then
+        # 其他系统路径
+        fzf_shell_dir="/usr/share/fzf"
+    fi
+
+    # 加载 fzf 集成
+    if command -v fzf >/dev/null 2>&1; then
+        # 尝试新版本方式 (fzf 0.48.0+)
+        if fzf --zsh >/dev/null 2>&1; then
+            source <(fzf --zsh)
+        # 旧版本方式：直接加载 shell 脚本
+        elif [ -n "$fzf_shell_dir" ] && [ -f "$fzf_shell_dir/completion.zsh" ]; then
+            source "$fzf_shell_dir/completion.zsh"
+            source "$fzf_shell_dir/key-bindings.zsh"
+        fi
+    fi
+
+    unset -f __fzf_setup
+}
+__fzf_setup
+
+# fzf 快捷键说明：
+# CTRL-T - 粘贴选中的文件/目录到命令行
+# CTRL-R - 搜索命令历史
+# ALT-C  - cd 到选中的目录
+# **<TAB> - 模糊补全（文件、目录、进程等）
 EOF
 
     log_info "fzf ZSH 配置完成"
