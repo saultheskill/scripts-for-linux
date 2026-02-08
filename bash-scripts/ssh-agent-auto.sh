@@ -6,8 +6,9 @@ echo -e "\e[1;33m👤 作者: saul\e[0m"
 echo -e "\e[1;33m📧 邮箱: sau1@maranth@gmail.com\e[0m"
 echo -e "\e[1;35m🔖 version 1.0\e[0m"
 echo -e "\e[1;34m================================================================\e[0m"
-echo -e "\e[1;36m本脚本将帮助您配合ssh-agent添加root密码登录,自动生成sshkey,并将公钥添加到指定服务器。\e[0m"
-echo -e "\e[1;36m请按照提示输入相关信息，然后脚本将自动完成后续操作。\e[0m"
+echo -e "\e[1;36m本脚本将帮助您生成 SSH 密钥,并将公钥部署到指定服务器。\e[0m"
+echo -e "\e[1;36m配合 Oh My Zsh ssh-agent 插件使用，自动管理密钥。\e[0m"
+echo -e "\e[1;33m注意：此脚本已移除手动 ssh-add，密钥由 ssh-agent 插件自动管理。\e[0m"
 echo -e "\e[1;34m================================================================\e[0m"
 generate_sshkey() {
     echo "请输入rsa密钥的名称："
@@ -26,9 +27,21 @@ generate_sshkey() {
     ssh-keygen -t rsa -b 4096 -C "$comment" -f $HOME/.ssh/$keyName
     echo -e "\033[32m密钥已生成，文件保存在 $HOME/.ssh/$keyName\033[0m"
 }
-#添加所选择的公钥到服务器
+# 添加所选择的公钥到服务器
+# 注意：此脚本与 Oh My Zsh ssh-agent 插件配合使用
+# 密钥将由 ssh-agent 插件自动管理，无需手动 ssh-add
 add_sshkey() {
         sudo apt install sshpass -y &> /dev/null
+
+        # 检查 Oh My Zsh ssh-agent 插件是否配置
+        if [ -f "$HOME/.zshrc" ] && grep -q "ssh-agent" "$HOME/.zshrc" 2>/dev/null; then
+            echo -e "\e[1;32m✓ 检测到 Oh My Zsh ssh-agent 插件已配置\e[0m"
+            echo -e "\e[1;36m  密钥将由插件自动管理，无需手动 ssh-add\e[0m"
+        else
+            echo -e "\e[1;33m⚠ 提示：建议安装 Oh My Zsh 并启用 ssh-agent 插件\e[0m"
+            echo -e "\e[1;36m  在 ~/.zshrc 中添加: plugins=(... ssh-agent)\e[0m"
+        fi
+        echo ""
         prompt="$(whoami)@$(hostname) > "
         echo -e "\e[1;36m请输入服务器ip地址：\e[0m"
         read ip
@@ -82,10 +95,36 @@ add_sshkey() {
         return 1  # 返回一个非零值表示失败
 
     else
-        ssh-add $HOME/.ssh/* &> /dev/null
-        echo -e "\033[32m公钥 $HOME/.ssh/$keyName 添加成功\033[0m"
-        echo "ssh-agent已经添加了新的密钥。"
-        echo -e "\033[32m现在您可以通过ssh $username@$ip -p $port登录服务器。\033[0m"
+        # 设置密钥权限（让 ssh-agent 插件可以正确读取）
+        chmod 600 $HOME/.ssh/${keyName%.pub} 2>/dev/null || true
+        chmod 644 $HOME/.ssh/$keyName 2>/dev/null || true
+
+        echo -e "\033[32m公钥 $HOME/.ssh/$keyName 部署成功\033[0m"
+        echo ""
+        echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
+        echo -e "\e[1;33m  后续步骤：\e[0m"
+        echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
+        echo ""
+        echo -e "\e[1;32m1. 确保 Oh My Zsh ssh-agent 插件已启用：\e[0m"
+        echo -e "   grep 'plugins=.*ssh-agent' ~/.zshrc"
+        echo ""
+        echo -e "\e[1;32m2. 重新加载 ZSH 配置：\e[0m"
+        echo -e "   source ~/.zshrc"
+        echo ""
+        echo -e "\e[1;32m3. 首次连接时输入密码，之后自动使用 ssh-agent：\e[0m"
+        echo -e "   ssh $username@$ip -p $port"
+        echo ""
+        echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
+        echo -e "\e[1;33m  推荐配置 ~/.ssh/config：\e[0m"
+        echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
+        echo ""
+        echo -e "\e[1;37mHost $ip\e[0m"
+        echo -e "\e[1;37m    HostName $ip\e[0m"
+        echo -e "\e[1;37m    Port $port\e[0m"
+        echo -e "\e[1;37m    User $username\e[0m"
+        echo -e "\e[1;37m    IdentityFile ~/.ssh/${keyName%.pub}\e[0m"
+        echo -e "\e[1;37m    AddKeysToAgent yes\e[0m"
+        echo ""
     fi
 }
 
