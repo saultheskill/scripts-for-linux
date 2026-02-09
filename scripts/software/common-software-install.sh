@@ -262,6 +262,54 @@ configure_vim_as_editor() {
     fi
 }
 
+# 配置 vim 配置文件
+configure_vimrc() {
+    log_info "配置 vim 配置文件..."
+
+    local vimrc_file="$HOME/.vimrc"
+    local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+    local source_vimrc="$script_dir/../../../.vimrc"
+
+    # 检查源文件是否存在
+    if [ ! -f "$source_vimrc" ]; then
+        # 尝试其他可能的路径
+        if [ -f "/root/scripts-for-linux/.vimrc" ]; then
+            source_vimrc="/root/scripts-for-linux/.vimrc"
+        elif [ -f "$HOME/scripts-for-linux/.vimrc" ]; then
+            source_vimrc="$HOME/scripts-for-linux/.vimrc"
+        else
+            log_warn "未找到 .vimrc 源文件，跳过 vim 配置"
+            return 1
+        fi
+    fi
+
+    # 备份现有的 .vimrc
+    if [ -f "$vimrc_file" ]; then
+        local backup_file="$vimrc_file.backup.$(date +%Y%m%d_%H%M%S)"
+        cp "$vimrc_file" "$backup_file"
+        log_info "已备份现有 .vimrc 到 $backup_file"
+    fi
+
+    # 复制新的 .vimrc
+    if cp "$source_vimrc" "$vimrc_file"; then
+        echo -e "  ${GREEN}✅${RESET} vim 配置已应用"
+        echo -e "  ${CYAN}配置来源:${RESET} $source_vimrc"
+        echo -e "  ${CYAN}快捷键说明 (Leader键: Space空格):${RESET}"
+        echo -e "    • <Space>w  - 快速保存"
+        echo -e "    • <Space>q  - 打开临时缓冲区"
+        echo -e "    • F2        - 切换行号显示"
+        echo -e "    • F3        - 切换特殊字符显示"
+        echo -e "    • F5        - 切换粘贴模式"
+        echo -e "    • <C-j/k/h/l> - 窗口间导航"
+        echo -e "    • <Space>tn - 新建标签页"
+        echo -e "    • <Space>bd - 关闭当前缓冲区"
+        return 0
+    else
+        log_error "复制 .vimrc 失败"
+        return 1
+    fi
+}
+
 # 批量处理触发器
 process_triggers_batch() {
     log_info "批量处理待处理的触发器..."
@@ -426,6 +474,11 @@ install_common_software() {
     # 配置 vim 为默认编辑器
     if [ $success_count -gt 0 ]; then
         configure_vim_as_editor
+    fi
+
+    # 配置 vim 配置文件（如果 vim 安装成功）
+    if dpkg -l | grep -q "^ii  vim "; then
+        configure_vimrc
     fi
 
     # 清理 APT 配置
