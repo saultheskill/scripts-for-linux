@@ -49,10 +49,12 @@ readonly ZSH_PLUGINS=(
     "zsh-autosuggestions:https://github.com/zsh-users/zsh-autosuggestions"
     "zsh-syntax-highlighting:https://github.com/zsh-users/zsh-syntax-highlighting"
     "you-should-use:https://github.com/MichaelAquilina/zsh-you-should-use"
+    "fzf-tab:https://github.com/Aloxaf/fzf-tab"
 )
 
 # 完整插件列表（用于.zshrc配置）
-readonly COMPLETE_PLUGINS="git extract systemadmin zsh-interactive-cd systemd sudo docker ubuntu man command-not-found common-aliases docker-compose zsh-autosuggestions zsh-syntax-highlighting tmux you-should-use ssh-agent"
+# 注意：fzf-tab 必须在 fzf 之后加载
+readonly COMPLETE_PLUGINS="git extract systemadmin zsh-interactive-cd systemd sudo docker ubuntu man command-not-found common-aliases docker-compose zsh-autosuggestions zsh-syntax-highlighting tmux you-should-use ssh-agent fzf-tab"
 
 # 额外工具配置
 readonly TMUX_CONFIG_REPO="https://github.com/gpakosz/.tmux.git"
@@ -925,6 +927,70 @@ EOF
     return 0
 }
 
+# 添加 fzf-tab 配置
+# 参数: $1 - .zshrc文件路径
+add_fzf_tab_config() {
+    local zshrc_file="$1"
+
+    log_info "添加 fzf-tab 配置..."
+
+    # 检查是否已有 fzf-tab 配置
+    if grep -q "# fzf-tab configuration" "$zshrc_file" 2>/dev/null; then
+        log_info "fzf-tab 配置已存在，跳过"
+        return 0
+    fi
+
+    cat >> "$zshrc_file" << 'EOF'
+
+# =============================================================================
+# fzf-tab configuration (added by zsh-plugins-install.sh)
+# =============================================================================
+
+# 禁用默认的菜单选择（必须，否则 fzf-tab 不会生效）
+zstyle ':completion:*' menu no
+
+# 启用分组显示
+zstyle ':completion:*' group-name ''
+zstyle ':completion:*:descriptions' format '[%d]'
+
+# 文件预览配置
+zstyle ':fzf-tab:complete:cd:*' fzf-preview 'eza -la --color=always $realpath 2>/dev/null || ls -la $realpath'
+zstyle ':fzf-tab:complete:ls:*' fzf-preview 'eza -la --color=always $realpath 2>/dev/null || ls -la $realpath'
+zstyle ':fzf-tab:complete:cat:*' fzf-preview 'bat --color=always --line-range :50 $realpath 2>/dev/null || head -50 $realpath'
+zstyle ':fzf-tab:complete:vim:*' fzf-preview 'bat --color=always --line-range :50 $realpath 2>/dev/null || head -50 $realpath'
+zstyle ':fzf-tab:complete:nvim:*' fzf-preview 'bat --color=always --line-range :50 $realpath 2>/dev/null || head -50 $realpath'
+
+# 进程预览
+zstyle ':fzf-tab:complete:kill:*' fzf-preview 'ps -p $word -o pid,ppid,cmd,pcpu,pmem,stime,tty,stat 2>/dev/null || echo "进程已结束"'
+zstyle ':fzf-tab:complete:killall:*' fzf-preview 'ps aux | grep -w $word 2>/dev/null || echo "无匹配进程"'
+
+# Git 预览
+zstyle ':fzf-tab:complete:git-checkout:*' fzf-preview 'git log -1 --format="%h %s %cr" $word 2>/dev/null || echo "分支: $word"'
+zstyle ':fzf-tab:complete:git-show:*' fzf-preview 'git show --color=always $word 2>/dev/null | head -50'
+zstyle ':fzf-tab:complete:git-log:*' fzf-preview 'git log --color=always $word 2>/dev/null | head -20'
+
+# 环境变量预览
+zstyle ':fzf-tab:complete:export:*' fzf-preview 'echo "${(P)word}" 2>/dev/null || echo "未设置"'
+zstyle ':fzf-tab:complete:unset:*' fzf-preview 'echo "${(P)word}" 2>/dev/null || echo "未设置"'
+zstyle ':fzf-tab:complete:printenv:*' fzf-preview 'echo "${(P)word}" 2>/dev/null || echo "未设置"'
+
+# SSH 主机预览
+zstyle ':fzf-tab:complete:ssh:*' fzf-preview 'grep -A2 "Host $word" ~/.ssh/config 2>/dev/null || echo "$word"'
+zstyle ':fzf-tab:complete:scp:*' fzf-preview 'grep -A2 "Host $word" ~/.ssh/config 2>/dev/null || echo "$word"'
+
+# fzf-tab 外观配置
+zstyle ':fzf-tab:*' fzf-flags '--height=60%' '--layout=reverse' '--border=rounded'
+zstyle ':fzf-tab:*' fzf-pad 4
+
+# 切换目录后自动刷新
+zstyle ':fzf-tab:*' switch-group ',' '.'
+
+EOF
+
+    log_info "fzf-tab 配置已添加"
+    return 0
+}
+
 # 添加增强配置
 # 参数: $1 - .zshrc文件路径
 add_enhanced_config() {
@@ -993,6 +1059,10 @@ EOF
 
     # 应用更改
     mv "$temp_file" "$zshrc_file"
+
+    # 添加 fzf-tab 配置（独立函数）
+    add_fzf_tab_config "$zshrc_file"
+
     return 0
 }
 
@@ -1049,6 +1119,13 @@ verify_zshrc_config() {
         log_warn "插件配置可能不完整"
     fi
 
+    # 检查 fzf-tab 配置
+    if grep -q "fzf-tab" "$zshrc_file"; then
+        log_info "fzf-tab 配置验证通过"
+    else
+        log_warn "fzf-tab 配置可能缺失"
+    fi
+
     # 测试配置加载
     if echo 'source ~/.zshrc && echo "Config test successful"' | zsh 2>/dev/null | grep -q "Config test successful"; then
         log_info ".zshrc配置加载测试通过"
@@ -1080,7 +1157,7 @@ show_header() {
     echo -e "${blue_color}================================================================${reset_color}"
     echo
     echo -e "${cyan_color}本脚本将安装和配置ZSH插件和工具：${reset_color}"
-    echo -e "${cyan_color}• ZSH插件: zsh-autosuggestions, zsh-syntax-highlighting, you-should-use${reset_color}"
+    echo -e "${cyan_color}• ZSH插件: zsh-autosuggestions, zsh-syntax-highlighting, you-should-use, fzf-tab${reset_color}"
     echo -e "${cyan_color}• 额外工具: tmux配置${reset_color}"
     echo -e "${cyan_color}• 智能配置管理和优化${reset_color}"
     echo
