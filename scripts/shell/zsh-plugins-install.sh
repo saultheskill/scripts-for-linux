@@ -54,7 +54,7 @@ readonly ZSH_PLUGINS=(
 
 # 完整插件列表（用于.zshrc配置）
 # 注意：fzf-tab 必须在 fzf 之后加载
-readonly COMPLETE_PLUGINS="per-directory-history virtualenv npm colored-man-pages z git extract systemadmin zsh-interactive-cd systemd sudo docker ubuntu man command-not-found common-aliases docker-compose zsh-autosuggestions zsh-syntax-highlighting tmux you-should-use ssh-agent fzf-tab"
+readonly COMPLETE_PLUGINS="last-working-dir safe-paste virtualenv npm colored-man-pages z git extract systemadmin zsh-interactive-cd systemd sudo docker ubuntu man command-not-found common-aliases docker-compose zsh-autosuggestions zsh-syntax-highlighting tmux you-should-use ssh-agent fzf-tab"
 
 # 额外工具配置
 readonly TMUX_CONFIG_REPO="https://github.com/gpakosz/.tmux.git"
