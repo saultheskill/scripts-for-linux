@@ -1,27 +1,229 @@
-# JetBrains IDE（如WebStorm）的配置目录
+# =============================================================================
+# scripts-for-linux - Git Ignore Configuration
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# IDE & Editor Files
+# -----------------------------------------------------------------------------
+# JetBrains IDEs (WebStorm, IntelliJ, PyCharm, etc.)
 .idea/
+*.iml
+*.iws
+*.ipr
 
-# 依赖目录
-/node_modules/
+# VS Code
+.vscode/
+*.code-workspace
+.history/
 
-# 打包目录（如果你的项目中有使用）
-/dist/
-/build/
+# Vim
+*.swp
+*.swo
+*~
+.netrwhist
 
-# 系统文件
+# Emacs
+*~
+.#*
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# -----------------------------------------------------------------------------
+# OS Generated Files
+# -----------------------------------------------------------------------------
+# macOS
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Icon?
+Icon\r
 Thumbs.db
 
-# 日志文件
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# Linux
+.directory
+*.pid
+*.seed
+*.pid.lock
+
+# -----------------------------------------------------------------------------
+# Logs & Temporary Files
+# -----------------------------------------------------------------------------
 *.log
+logs/
+log/
+*.tmp
+*.temp
+tmp/
+temp/
+*.out
+*.err
 
-# 环境配置文件，比如.env（如果有敏感信息，不应该上传到公共仓库）
-.env
+# -----------------------------------------------------------------------------
+# Shell/Bash Specific
+# -----------------------------------------------------------------------------
+# Bash history and completion
+.bash_history
+.zsh_history
+.zsh_sessions/
+.bash_sessions/
 
-# Shell脚本通常不需要被忽略，除非你有特定的需求
-# *.sh
+# Script backup files
+*.bak
+*.backup
+*.orig
+*.rej
 
-# 项目配置文件
+# -----------------------------------------------------------------------------
+# Project Specific - Downloaded Packages & Binaries
+# -----------------------------------------------------------------------------
+# These should be managed by Git LFS if needed, not ignored
+# Comment out if you want to track specific versions
+# *.deb
+# *.tar.gz
+# *.tar.bz2
+# *.tgz
+
+# But ignore downloaded temporary files
+*.part
+*.crdownload
+*.download
+
+# -----------------------------------------------------------------------------
+# Claude & AI Tooling
+# -----------------------------------------------------------------------------
+# Claude Flow runtime files (already in .claude-flow/.gitignore)
+.claude-flow/data/
+.claude-flow/logs/
+.claude-flow/sessions/
+.claude-flow/neural/
+.claude-flow/*.log
+.claude-flow/*.tmp
+
+# Claude Code local configuration (may contain sensitive data)
+.claude/local/
+
+# -----------------------------------------------------------------------------
+# Node.js / JavaScript (if used for tooling)
+# -----------------------------------------------------------------------------
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 package-lock.json
 yarn.lock
-*.pb
+.pnpm-debug.log*
+
+# -----------------------------------------------------------------------------
+# Build & Distribution
+# -----------------------------------------------------------------------------
+dist/
+build/
+release/
+*.tgz
+*.zip
+
+# -----------------------------------------------------------------------------
+# Security - Sensitive Files
+# -----------------------------------------------------------------------------
+# Environment files with secrets
+.env
+.env.local
+.env.*.local
+.env.development
+.env.test
+.env.production
+
+# SSH Keys (should never be committed)
+*.pem
+*.key
+id_rsa
+id_rsa.pub
+id_dsa
+id_dsa.pub
+id_ecdsa
+id_ecdsa.pub
+id_ed25519
+id_ed25519.pub
+*.ppk
+
+# GPG Keys
+*.gpg
+*.pgp
+secring.*
+
+# Password files
+*.passwd
+*.password
+htpasswd
+
+# Configuration files with credentials
+config.json
+.credentials
+*.secret
+
+# -----------------------------------------------------------------------------
+# Testing
+# -----------------------------------------------------------------------------
+coverage/
+.nyc_output/
+*.lcov
+
+# -----------------------------------------------------------------------------
+# Tmux & Terminal
+# -----------------------------------------------------------------------------
+# Tmux socket (if created in project)
+tmux*.sock
+
+# -----------------------------------------------------------------------------
+# Docker
+# -----------------------------------------------------------------------------
+# Local Docker overrides (may contain sensitive env vars)
+docker-compose.override.yml
+docker-compose.override.yaml
+.env.docker
+
+# -----------------------------------------------------------------------------
+# Misc
+# -----------------------------------------------------------------------------
+# Cache directories
+.cache/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local configuration files
+local.config
+local.config.*
+*.local
+
+# Swap files from editors
+*.swp
+*.swo
+*~
+
+# Core dumps
+core
+core.*
+vgcore.*
+
+# GDB files
+.gdb_history
+openspec/
+.claude-flow/
+
+
+.claude/
+

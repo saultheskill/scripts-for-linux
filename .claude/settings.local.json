@@ -6,5 +6,9 @@
       "Bash(git push:*)",
       "Bash(ssh:*)"
     ]
-  }
+  },
+  "enabledMcpjsonServers": [
+    "claude-flow"
+  ],
+  "enableAllProjectMcpServers": true
 }
